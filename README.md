@@ -1,31 +1,36 @@
-# Draftsman MatterDesk
+# MatterDesk v2.0 (System Core)
 
-> Asymmetric Tabletop Dashboard Architecture.
+High-performance, hardware-optimized smart desk dashboard built for Raspberry Pi 4 (Wayland). Features preemptive frame-stacking, eliminating CPU-bound UI destructive rendering to operate within 1GB RAM constraints.
 
-MatterDesk is a hardware-accelerated, borderless control matrix designed for Raspberry Pi (32-bit `armhf`). It merges continuous integration (OTA updates) with native Wayland hardware compositing to deliver AirPlay receiver capabilities, CarPlay integration, and strict capacitive power-state management.
-
-## System Architecture
-
-* **Display Compositor:** Wayland / Wayfire (`wf-panel-pi`).
-* **Input Handling:** Raw capacitive bridging via `evdev` (FocalTech FT5x06).
-* **Receiver Protocol:** `UxPlay` (AirPlay video/audio pipeline).
-* **Infotainment Protocol:** `LIVI` interface via Carlinkit (CarPlay).
-* **Deployment Pipeline:** Systemd-managed Git continuous integration.
-
-## Hardware Prerequisites
-
-| Component | Specification |
-| :--- | :--- |
-| Compute | Raspberry Pi (Debian Bookworm 32-bit Legacy Kernel) |
-| Display | Waveshare 7-inch Capacitive Touch (DSI / I2C backlight mapped) |
-| CarPlay Bridge | Carlinkit CPC200 (CCPA/CCPW) - Required for LIVI |
+## Subsystem Architecture
+* **AirPlay Pipeline:** `uxplay` integration via XWayland surface rendering.
+* **CarPlay Engine:** Node-based Carlinkit bridging rendering to Chromium kiosk.
+* **Spotify Vinyl Matrix:** Asynchronous API polling, image mask compositing, and OAuth token caching.
+* **Monk Mode (YPT):** Firebase real-time database sync, immutable time-logging, task pipeline pulling.
+* **NOC (Settings):** Direct `nmcli` network management and GitHub OTA (Over-The-Air) pull routines.
 
 ## Deployment Protocol
 
-The system utilizes an idempotent bootstrap script. Execute directly from the terminal to configure Wayfire, install dependencies, force hardware permissions, and register the OTA daemon.
+1. **Clone the Repository**
+   ```bash
+   cd /home/st6b
+   git clone [https://github.com/YOUR_USERNAME/matterdesk.git](https://github.com/YOUR_USERNAME/matterdesk.git)
+   cd matterdesk
 
-```bash
-git clone [https://github.com/YOUR_USERNAME/Draftsman-MatterDesk.git](https://github.com/YOUR_USERNAME/Draftsman-MatterDesk.git) /home/st6b/matterdesk
-cd /home/st6b/matterdesk
+2. **Execute the Installer**
+Automates dependency injection, udev rules for Carlinkit, and systemd daemon registration.
 chmod +x install.sh
 ./install.sh
+
+3. **Cryptographic Authentication Requirements**
+Spotify: Execute python3 auth.py via SSH and complete the OAuth flow via your local machine's browser to generate the local .cache token.
+
+Firebase: Place your serviceAccountKey.json directly into the /home/st6b/matterdesk/ root directory.
+
+4. **Wayland Desktop Bypass**
+To boot directly into the GUI and suppress the Pi desktop environment, modify the Wayfire autostart configuration (~/.config/wayfire.ini):
+[autostart]
+# Comment out panel and background
+# panel = wf-panel-pi
+# background = wf-background-pi
+matterdesk = systemctl --user start matterdesk.service

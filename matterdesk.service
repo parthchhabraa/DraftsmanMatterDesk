@@ -1,21 +1,14 @@
 [Unit]
-Description=Draftsman MatterDesk Core & OTA Pipeline
+Description=Draftsman MatterDesk Core
 After=graphical.target
-Wants=network-online.target
 
 [Service]
 User=st6b
 Environment=DISPLAY=:0
 Environment=WAYLAND_DISPLAY=wayland-1
+Environment=XDG_RUNTIME_DIR=/run/user/1000
 WorkingDirectory=/home/st6b/matterdesk
-
-# OTA Sequence: Hard sync with GitHub repository before execution
-ExecStartPre=/usr/bin/git fetch --all
-ExecStartPre=/usr/bin/git reset --hard origin/main
-
-# Core Execution
 ExecStart=/usr/bin/python3 /home/st6b/matterdesk/matterdesk.py
-
 Restart=always
 RestartSec=5
 

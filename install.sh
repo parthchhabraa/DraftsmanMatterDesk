@@ -1,33 +1,39 @@
 #!/bin/bash
-# Draftsman MatterDesk - Automated Deployment Pipeline
+echo ">>> INITIALIZING MATTERDESK ARCHITECTURE <<<"
 
-REPO_URL="https://github.com/YOUR_USERNAME/Draftsman-MatterDesk.git"
-INSTALL_DIR="/home/st6b/matterdesk"
-
-# 1. Dependency Injection
+# 1. System Dependencies
 sudo apt update
-sudo apt install -y git python3-tk python3-evdev python3-pil python3-pil.imagetk uxplay procps
+sudo apt install -y python3-tk nodejs npm libusb-1.0-0-dev cmake chromium-browser network-manager coreutils
+sudo pip3 install spotipy pillow requests firebase-admin evdev --break-system-packages
 
-# 2. Hardware Permissions
-sudo usermod -aG input st6b
+# 2. USB Permissions (Carlinkit)
+echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="1314", ATTR{idProduct}=="152*", MODE="0666", GROUP="plugdev"' | sudo tee /etc/udev/rules.d/50-carplay.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger
 
-# 3. Repository Instantiation
-if [ -d "$INSTALL_DIR" ]; then
-    rm -rf "$INSTALL_DIR"
-fi
-git clone $REPO_URL $INSTALL_DIR
+# 3. Systemd Daemon Deployment
+cat <<EOF | sudo tee /etc/systemd/system/matterdesk.service
+[Unit]
+Description=Draftsman MatterDesk Core
+After=graphical.target
 
-# 4. Wallpaper Configuration (Wayland/Wayfire)
-CONF_FILE="$HOME/.config/pcmanfm/LXDE-pi/desktop-items-0.conf"
-mkdir -p ~/.config/pcmanfm/LXDE-pi/
-cp /etc/xdg/pcmanfm/LXDE-pi/desktop-items-0.conf ~/.config/pcmanfm/LXDE-pi/ 2>/dev/null
-sed -i "s|^wallpaper=.*|wallpaper=$INSTALL_DIR/images/wallpaper.png|" $CONF_FILE
-sed -i "s|^wallpaper_mode=.*|wallpaper_mode=stretch|" $CONF_FILE
+[Service]
+User=st6b
+Environment=DISPLAY=:0
+Environment=WAYLAND_DISPLAY=wayland-1
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+WorkingDirectory=/home/st6b/matterdesk
+ExecStart=/usr/bin/python3 /home/st6b/matterdesk/matterdesk.py
+Restart=always
+RestartSec=5
 
-# 5. Systemd Daemon Registration (OTA & Autostart)
-sudo cp $INSTALL_DIR/matterdesk.service /etc/systemd/system/
+[Install]
+WantedBy=graphical.target
+EOF
+
 sudo systemctl daemon-reload
 sudo systemctl enable matterdesk.service
 
-# 6. Reboot to Finalize Kernel/Group Changes
-sudo reboot
+# 4. Plymouth Silent Boot (Optional)
+echo "disable_splash=1" | sudo tee -a /boot/firmware/config.txt > /dev/null
+
+echo ">>> DEPLOYMENT COMPLETE. PLEASE REBOOT. <<<"
