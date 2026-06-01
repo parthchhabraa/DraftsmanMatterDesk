@@ -14,7 +14,7 @@ High-performance, hardware-optimized smart desk dashboard built for Raspberry Pi
 1. **Clone the Repository**
    ```bash
    cd /home/st6b
-   git clone [https://github.com/YOUR_USERNAME/matterdesk.git](https://github.com/YOUR_USERNAME/matterdesk.git)
+   git clone [https://github.com/parthchhabraa/DraftsmanMatterDesk](https://github.com/parthchhabraa/DraftsmanMatterDesk)
    cd matterdesk
 
 2. **Execute the Installer**
