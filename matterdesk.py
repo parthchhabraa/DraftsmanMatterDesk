@@ -21,7 +21,8 @@ BACKLIGHT_POWER = '/sys/class/backlight/10-0045/bl_power'
 BACKLIGHT_BRIGHT = '/sys/class/backlight/10-0045/brightness'
 TOUCH_DEVICE = '/dev/input/event4'
 CARPLAY_DIR = '/home/st6b/matterdesk/carplay-engine'
-bootloader1_IMG = '/home/st6b/matterdesk/images/bootloader1.png'
+BOOTLOADER_IMG = '/home/st6b/matterdesk/images/bootloader.png'
+LOGO_IMG_PATH = '/home/st6b/matterdesk/images/logo.png'
 FIREBASE_KEY_PATH = '/home/st6b/matterdesk/serviceAccountKey.json'
 GITHUB_REPO_URL = 'https://github.com/parthchhabraa/DraftsmanMatterDesk.git'
 
@@ -71,7 +72,7 @@ class TouchModal(tk.Toplevel):
 class MatterDeskCore:
     def __init__(self):
         self.system_logs = []
-        self.log("System Initializing - MatterDesk v3.3 (UNIX Boot Engine)")
+        self.log("System Initializing - MatterDesk v3.4 (macOS UX Engine)")
         
         self.root = tk.Tk()
         self.root.overrideredirect(True)
@@ -164,7 +165,7 @@ class MatterDeskCore:
                 self.sleep_display()
 
     # ==========================================
-    # UNIX BOOT & OTA UX
+    # macOS STYLE BOOT & OTA UX
     # ==========================================
     def _build_boot_ui(self):
         f = tk.Frame(self.root, bg="#000000")
@@ -174,31 +175,13 @@ class MatterDeskCore:
         self.boot_canvas.pack()
         
         try:
-            self.boot_logo_img = ImageTk.PhotoImage(Image.open(bootloader1_IMG).resize((120, 120), Image.LANCZOS))
-            self.boot_canvas.create_image(400, 180, image=self.boot_logo_img)
+            self.boot_logo_img = ImageTk.PhotoImage(Image.open(LOGO_IMG_PATH).resize((120, 120), Image.LANCZOS))
+            self.boot_canvas.create_image(400, 200, image=self.boot_logo_img)
         except Exception:
-            self.boot_canvas.create_text(400, 180, text="D", font=font.Font(family="Horizon", size=80), fill="#ffffff")
+            self.boot_canvas.create_text(400, 200, text="D", font=font.Font(family="Horizon", size=80), fill="#ffffff")
 
-        self.boot_canvas.create_rectangle(300, 320, 500, 324, fill="#222222", outline="")
+        self.boot_canvas.create_rectangle(300, 320, 500, 324, fill="#333333", outline="")
         self.boot_bar = self.boot_canvas.create_rectangle(300, 320, 300, 324, fill="#ffffff", outline="")
-        
-        self.boot_log_id = self.boot_canvas.create_text(400, 350, text="Initializing kernel...", font=font.Font(family="Courier", size=10), fill="#1db954", anchor="n", justify="center")
-        
-        self.boot_sequence_logs = [
-            "[ OK ] Started udev Kernel Device Manager.",
-            "Mounting /sys/kernel/debug...",
-            "[ OK ] Mounted /sys/kernel/debug.",
-            "[ OK ] Reached target Local File Systems.",
-            "Starting Network Manager...",
-            "[ OK ] Started Network Manager.",
-            "Starting WPA supplicant...",
-            "[ OK ] Reached target Network.",
-            "Starting MatterDesk Core Daemon...",
-            "Loading GUI Context...",
-            "Binding Wayland Display Server...",
-            "Establishing Firebase Socket...",
-            "[ OK ] System Ready."
-        ]
 
     def _animate_boot_screen(self, progress=0):
         if progress > 200:
@@ -206,11 +189,6 @@ class MatterDeskCore:
             return
         
         self.boot_canvas.coords(self.boot_bar, 300, 320, 300 + progress, 324)
-        
-        idx = int((progress / 200) * (len(self.boot_sequence_logs) - 1))
-        start_idx = max(0, idx - 2)
-        log_text = "\n".join(self.boot_sequence_logs[start_idx:idx+1])
-        self.boot_canvas.itemconfig(self.boot_log_id, text=log_text)
 
         step = 6 if progress < 120 else 3
         self.root.after(40, self._animate_boot_screen, progress + step)
@@ -223,12 +201,12 @@ class MatterDeskCore:
         self.ota_canvas.pack()
         
         try:
-            self.ota_logo_img = ImageTk.PhotoImage(Image.open(bootloader1_IMG).resize((120, 120), Image.LANCZOS))
-            self.ota_canvas.create_image(400, 180, image=self.ota_logo_img)
+            self.ota_logo_img = ImageTk.PhotoImage(Image.open(LOGO_IMG_PATH).resize((120, 120), Image.LANCZOS))
+            self.ota_canvas.create_image(400, 200, image=self.ota_logo_img)
         except Exception:
-            self.ota_canvas.create_text(400, 180, text="D", font=font.Font(family="Horizon", size=80), fill="#ffffff")
+            self.ota_canvas.create_text(400, 200, text="D", font=font.Font(family="Horizon", size=80), fill="#ffffff")
 
-        self.ota_canvas.create_rectangle(300, 320, 500, 324, fill="#222222", outline="")
+        self.ota_canvas.create_rectangle(300, 320, 500, 324, fill="#333333", outline="")
         self.ota_bar = self.ota_canvas.create_rectangle(300, 320, 300, 324, fill="#ffffff", outline="")
         self.ota_text = self.ota_canvas.create_text(400, 350, text="Preparing Update...", font=font.Font(family="Helvetica", size=12), fill="#aaaaaa")
 
@@ -540,7 +518,7 @@ class MatterDeskCore:
             self.study_active = False
             self.btn_toggle_timer.config(text="START SPRINT", bg="#1db954")
             if self.study_job: self.root.after_cancel(self.study_job)
-            if self.firebase_active and self.study_seconds >= 5:
+            if getattr(self, 'firebase_active', False) and self.study_seconds >= 5:
                 self.log(f"Initiating Firebase sync for {self.study_seconds}s of {self.current_subject.get()}")
                 threading.Thread(target=self._push_session, args=(self.current_subject.get(), self.study_seconds), daemon=True).start()
             else: self.log(f"Session discarded: Only {self.study_seconds}s recorded.")
@@ -1115,11 +1093,11 @@ class MatterDeskCore:
         self.lbl_waiting.config(text="")
         os.system(f'echo 128 | sudo tee {BACKLIGHT_BRIGHT} > /dev/null')
         try:
-            self.show_img = ImageTk.PhotoImage(Image.open(bootloader1_IMG).resize((800, 480), Image.LANCZOS))
+            self.show_img = ImageTk.PhotoImage(Image.open(BOOTLOADER_IMG).resize((800, 480), Image.LANCZOS))
             lbl = tk.Label(self.frames["waiting"], image=self.show_img, bg="#000000", bd=0)
             lbl.place(x=0, y=0, relwidth=1, relheight=1)
             lbl.bind("<Button-1>", lambda e: (lbl.destroy(), os.system(f'echo 255 | sudo tee {BACKLIGHT_BRIGHT} > /dev/null'), self.wake_display()))
-        except: self.lbl_waiting.config(text="bootloader1.png not found")
+        except: self.lbl_waiting.config(text="bootloader.png not found")
 
     def kill_active_processes(self):
         if getattr(self, 'active_process', None): self.active_process.terminate()
