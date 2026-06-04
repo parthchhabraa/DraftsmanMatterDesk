@@ -21,7 +21,7 @@ BACKLIGHT_POWER = '/sys/class/backlight/10-0045/bl_power'
 BACKLIGHT_BRIGHT = '/sys/class/backlight/10-0045/brightness'
 TOUCH_DEVICE = '/dev/input/event4'
 CARPLAY_DIR = '/home/st6b/matterdesk/carplay-engine'
-BOOTLOADER_IMG = '/home/st6b/matterdesk/images/bootloader.png'
+bootloader1_IMG = '/home/st6b/matterdesk/images/bootloader1.png'
 FIREBASE_KEY_PATH = '/home/st6b/matterdesk/serviceAccountKey.json'
 GITHUB_REPO_URL = 'https://github.com/parthchhabraa/DraftsmanMatterDesk.git'
 
@@ -71,7 +71,7 @@ class TouchModal(tk.Toplevel):
 class MatterDeskCore:
     def __init__(self):
         self.system_logs = []
-        self.log("System Initializing - MatterDesk v3.1 (macOS UX Engine)")
+        self.log("System Initializing - MatterDesk v3.3 (UNIX Boot Engine)")
         
         self.root = tk.Tk()
         self.root.overrideredirect(True)
@@ -92,7 +92,6 @@ class MatterDeskCore:
         self._init_spotify()
         self._init_firebase()
         
-        # Build System UI Frames
         self._build_boot_ui()
         self._build_ota_ui()
         self._build_main_menu()
@@ -105,19 +104,16 @@ class MatterDeskCore:
         self._build_telemetry_bar()
         self._build_thermal_panic_ui()
         
-        # Triple-Tap Global Listener
         self.tap_times = []
         self.root.bind("<Button-1>", self._global_tap_handler, add="+")
         
-        # Execute Apple-Style Boot Sequence
         self.nav_to("boot")
         self.root.after(100, self._animate_boot_screen)
         
-        # Core Background Threads
         threading.Thread(target=self.touch_listener, daemon=True).start()
         threading.Thread(target=self._hardware_telemetry_loop, daemon=True).start()
         threading.Thread(target=self._weather_telemetry_loop, daemon=True).start()
-        if self.firebase_active:
+        if getattr(self, 'firebase_active', False):
             threading.Thread(target=self._battery_telemetry_loop, daemon=True).start()
             
         self._clock_tick()
@@ -161,7 +157,6 @@ class MatterDeskCore:
     def _global_tap_handler(self, event):
         now = time.time()
         self.tap_times.append(now)
-        # Prune taps older than 800ms
         self.tap_times = [t for t in self.tap_times if now - t < 0.8]
         if len(self.tap_times) >= 3:
             self.tap_times.clear()
@@ -169,7 +164,7 @@ class MatterDeskCore:
                 self.sleep_display()
 
     # ==========================================
-    # APPLE-STYLE BOOT & OTA UX
+    # UNIX BOOT & OTA UX
     # ==========================================
     def _build_boot_ui(self):
         f = tk.Frame(self.root, bg="#000000")
@@ -178,20 +173,47 @@ class MatterDeskCore:
         self.boot_canvas = tk.Canvas(f, width=800, height=480, bg="#000000", highlightthickness=0)
         self.boot_canvas.pack()
         
-        # Apple Logo Character (Fallback to DRAFTSMAN text if missing from Linux font)
-        self.boot_canvas.create_text(400, 200, text="", font=font.Font(family="Helvetica", size=80), fill="#ffffff")
-        self.boot_canvas.create_text(400, 260, text="DRAFTSMAN", font=font.Font(family="Helvetica", size=14, weight="bold"), fill="#555555")
-        
+        try:
+            self.boot_logo_img = ImageTk.PhotoImage(Image.open(bootloader1_IMG).resize((120, 120), Image.LANCZOS))
+            self.boot_canvas.create_image(400, 180, image=self.boot_logo_img)
+        except Exception:
+            self.boot_canvas.create_text(400, 180, text="D", font=font.Font(family="Horizon", size=80), fill="#ffffff")
+
         self.boot_canvas.create_rectangle(300, 320, 500, 324, fill="#222222", outline="")
         self.boot_bar = self.boot_canvas.create_rectangle(300, 320, 300, 324, fill="#ffffff", outline="")
+        
+        self.boot_log_id = self.boot_canvas.create_text(400, 350, text="Initializing kernel...", font=font.Font(family="Courier", size=10), fill="#1db954", anchor="n", justify="center")
+        
+        self.boot_sequence_logs = [
+            "[ OK ] Started udev Kernel Device Manager.",
+            "Mounting /sys/kernel/debug...",
+            "[ OK ] Mounted /sys/kernel/debug.",
+            "[ OK ] Reached target Local File Systems.",
+            "Starting Network Manager...",
+            "[ OK ] Started Network Manager.",
+            "Starting WPA supplicant...",
+            "[ OK ] Reached target Network.",
+            "Starting MatterDesk Core Daemon...",
+            "Loading GUI Context...",
+            "Binding Wayland Display Server...",
+            "Establishing Firebase Socket...",
+            "[ OK ] System Ready."
+        ]
 
     def _animate_boot_screen(self, progress=0):
         if progress > 200:
             self.nav_to("main")
             return
+        
         self.boot_canvas.coords(self.boot_bar, 300, 320, 300 + progress, 324)
+        
+        idx = int((progress / 200) * (len(self.boot_sequence_logs) - 1))
+        start_idx = max(0, idx - 2)
+        log_text = "\n".join(self.boot_sequence_logs[start_idx:idx+1])
+        self.boot_canvas.itemconfig(self.boot_log_id, text=log_text)
+
         step = 6 if progress < 120 else 3
-        self.root.after(30, self._animate_boot_screen, progress + step)
+        self.root.after(40, self._animate_boot_screen, progress + step)
 
     def _build_ota_ui(self):
         f = tk.Frame(self.root, bg="#000000")
@@ -200,7 +222,12 @@ class MatterDeskCore:
         self.ota_canvas = tk.Canvas(f, width=800, height=480, bg="#000000", highlightthickness=0)
         self.ota_canvas.pack()
         
-        self.ota_canvas.create_text(400, 200, text="", font=font.Font(family="Helvetica", size=80), fill="#ffffff")
+        try:
+            self.ota_logo_img = ImageTk.PhotoImage(Image.open(bootloader1_IMG).resize((120, 120), Image.LANCZOS))
+            self.ota_canvas.create_image(400, 180, image=self.ota_logo_img)
+        except Exception:
+            self.ota_canvas.create_text(400, 180, text="D", font=font.Font(family="Horizon", size=80), fill="#ffffff")
+
         self.ota_canvas.create_rectangle(300, 320, 500, 324, fill="#222222", outline="")
         self.ota_bar = self.ota_canvas.create_rectangle(300, 320, 300, 324, fill="#ffffff", outline="")
         self.ota_text = self.ota_canvas.create_text(400, 350, text="Preparing Update...", font=font.Font(family="Helvetica", size=12), fill="#aaaaaa")
@@ -215,7 +242,7 @@ class MatterDeskCore:
             return
             
         if not hasattr(self, 'ota_progress'): self.ota_progress = 0
-        if self.ota_progress < 180: # Stall at 90% until backend thread finishes
+        if self.ota_progress < 180:
             self.ota_progress += 2
             self.ota_canvas.coords(self.ota_bar, 300, 320, 300 + self.ota_progress, 324)
         self.root.after(50, self._animate_ota_bar)
@@ -293,7 +320,7 @@ class MatterDeskCore:
         self.nav_to("main")
 
     # ==========================================
-    # UI BUILDERS: v3.1 MAIN MENU (BENTO GRID)
+    # MAIN MENU (BENTO GRID)
     # ==========================================
     def _build_main_menu(self):
         f = tk.Frame(self.root)
@@ -304,20 +331,18 @@ class MatterDeskCore:
         self.home_canvas.pack(fill="both", expand=True)
         self.home_canvas.create_image(0, 0, image=self.bg_image, anchor="nw")
 
-        # 1. Clock & Greeting Box (x:20, y:20, w:300, h:200)
         self._create_round_rect(self.home_canvas, 20, 20, 320, 220, radius=25, fill="#121212", stipple="gray50")
-        self.clock_id = self.home_canvas.create_text(40, 70, text="00:00", font=font.Font(family="Helvetica", size=55, weight="bold"), fill="#ffffff", anchor="w")
+        self.home_canvas.create_text(40, 50, text="DRAFTSMAN", font=font.Font(family="Horizon", size=14, weight="bold"), fill="#1db954", anchor="w")
+        self.clock_id = self.home_canvas.create_text(40, 100, text="00:00", font=font.Font(family="Helvetica", size=55, weight="bold"), fill="#ffffff", anchor="w")
         self.greet_id = self.home_canvas.create_text(40, 160, text="Loading...", font=font.Font(family="Helvetica", size=14), fill="#aaaaaa", anchor="w")
         self.home_canvas.create_text(40, 185, text="Parth Chhabra", font=font.Font(family="Helvetica", size=16, weight="bold"), fill="#ffffff", anchor="w")
 
-        # 2. Weather Box (x:20, y:240, w:300, h:200)
         self._create_round_rect(self.home_canvas, 20, 240, 320, 440, radius=25, fill="#121212", stipple="gray50")
         self.weather_temp_id = self.home_canvas.create_text(40, 290, text="--°C", font=font.Font(family="Helvetica", size=45, weight="bold"), fill="#ffffff", anchor="w")
         self.home_canvas.create_text(40, 350, text="Udaipur, Rajasthan", font=font.Font(family="Helvetica", size=12, weight="bold"), fill="#1db954", anchor="w")
         self.weather_pop_id = self.home_canvas.create_text(40, 390, text="Precipitation: --%", font=font.Font(family="Helvetica", size=12), fill="#aaaaaa", anchor="w")
         self.weather_desc_id = self.home_canvas.create_text(40, 410, text="Syncing Meteorology...", font=font.Font(family="Helvetica", size=12), fill="#aaaaaa", anchor="w")
 
-        # 3. Battery Deck (x:340, y:20, w:440, h:180)
         self._create_round_rect(self.home_canvas, 340, 20, 780, 200, radius=25, fill="#121212", stipple="gray50")
         self.batt_ui = {}
         devices = ["iPhone", "MacBook", "iPad", "Watch"]
@@ -330,7 +355,6 @@ class MatterDeskCore:
             text_id = self.home_canvas.create_text(750, y_offset, text="--%", font=font.Font(family="Helvetica", size=12), fill="#aaa", anchor="e")
             self.batt_ui[dev.lower()] = {"bar": bar_id, "text": text_id}
 
-        # 4. App Matrix (x:340, y:220, w:440, h:220)
         apps = [
             ("AirPlay", "#1a1a1a", "#fff", self.launch_uxplay),
             ("CarPlay", "#1a1a1a", "#aaa", self.launch_carplay),
@@ -377,15 +401,12 @@ class MatterDeskCore:
     def _weather_telemetry_loop(self):
         while True:
             try:
-                # Open-Meteo endpoint (Udaipur)
                 url = "https://api.open-meteo.com/v1/forecast?latitude=24.5854&longitude=73.6855&current=temperature_2m,precipitation_probability,weather_code&timezone=Asia%2FKolkata"
                 res = requests.get(url, timeout=10).json()
-                
                 temp = res["current"]["temperature_2m"]
                 pop = res["current"]["precipitation_probability"]
                 code = res["current"]["weather_code"]
                 
-                # WMO Code Parsing
                 desc = "Clear"
                 if code in [1, 2, 3]: desc = "Partly Cloudy"
                 elif code in [45, 48]: desc = "Fog"
@@ -393,9 +414,8 @@ class MatterDeskCore:
                 elif code in [95, 96, 99]: desc = "Thunderstorm"
 
                 self.root.after(0, lambda t=temp, p=pop, d=desc: self._update_weather_ui(t, p, d))
-            except Exception as e:
-                self.log(f"Weather Fetch Error: {e}")
-            time.sleep(900) # 15 minutes
+            except Exception as e: self.log(f"Weather Fetch Error: {e}")
+            time.sleep(900) 
 
     def _update_weather_ui(self, temp, pop, desc):
         self.home_canvas.itemconfig(self.weather_temp_id, text=f"{temp:.1f}°C")
@@ -1095,11 +1115,11 @@ class MatterDeskCore:
         self.lbl_waiting.config(text="")
         os.system(f'echo 128 | sudo tee {BACKLIGHT_BRIGHT} > /dev/null')
         try:
-            self.show_img = ImageTk.PhotoImage(Image.open(BOOTLOADER_IMG).resize((800, 480), Image.LANCZOS))
+            self.show_img = ImageTk.PhotoImage(Image.open(bootloader1_IMG).resize((800, 480), Image.LANCZOS))
             lbl = tk.Label(self.frames["waiting"], image=self.show_img, bg="#000000", bd=0)
             lbl.place(x=0, y=0, relwidth=1, relheight=1)
             lbl.bind("<Button-1>", lambda e: (lbl.destroy(), os.system(f'echo 255 | sudo tee {BACKLIGHT_BRIGHT} > /dev/null'), self.wake_display()))
-        except: self.lbl_waiting.config(text="bootloader.png not found")
+        except: self.lbl_waiting.config(text="bootloader1.png not found")
 
     def kill_active_processes(self):
         if getattr(self, 'active_process', None): self.active_process.terminate()
