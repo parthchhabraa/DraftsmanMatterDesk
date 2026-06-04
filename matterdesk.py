@@ -747,6 +747,172 @@ class MatterDeskCore:
             self.root.after(0, lambda: self.btn_ota.config(text="OTA FAILED. CHECK LOGS.", bg="#ff4444"))
 
     # ==========================================
+    # SPOTIFY SUBSYSTEM
+    # ==========================================
+    def _init_spotify(self):
+        self.sp = None
+        if os.path.exists(SPOTIFY_CACHE_PATH):
+            try:
+                self.sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
+                    client_id=SPOTIFY_CLIENT_ID, client_secret=SPOTIFY_CLIENT_SECRET,
+                    redirect_uri=SPOTIFY_REDIRECT_URI, cache_path=SPOTIFY_CACHE_PATH, open_browser=False,
+                    scope='user-read-playback-state user-modify-playback-state playlist-read-private playlist-read-collaborative'
+                ))
+            except Exception: pass
+        self.vinyl_active = False
+        self.vinyl_job = None
+        self.current_track_id = None
+        self.album_art_image = None
+        self.playlist_dict = {}
+
+    def _build_spotify_ui(self):
+        f = tk.Frame(self.root, bg="#121212")
+        f.place(x=0, y=0, relwidth=1, relheight=1)
+        self.frames["spotify"] = f
+        
+        if not self.sp:
+            tk.Label(f, text="Auth Missing: run auth.py", font=self.font_header, fg="#ff4444", bg="#121212").pack(pady=(150, 10))
+            tk.Button(f, text="< BACK", font=self.font_sub, bg="#222", fg="#fff", bd=0, command=lambda: self.nav_to("main")).pack(pady=40, ipadx=20, ipady=10)
+            return
+
+        top = tk.Frame(f, bg="#121212", height=40)
+        top.pack(fill="x", padx=10, pady=5)
+        tk.Button(top, text="< BACK", font=self.font_body, bg="#121212", fg="#fff", bd=0, command=lambda: self.nav_to("main")).pack(side="left")
+        
+        self.vinyl_canvas = tk.Canvas(f, width=350, height=350, bg="#121212", highlightthickness=0)
+        self.vinyl_canvas.pack(side="left", padx=30)
+        self._draw_vinyl()
+        
+        ctrl = tk.Frame(f, bg="#121212")
+        ctrl.pack(side="left", fill="both", expand=True, padx=20)
+        self.lbl_track = tk.Label(ctrl, text="Loading...", font=self.font_header, fg="#fff", bg="#121212", anchor="w")
+        self.lbl_track.pack(fill="x", pady=(20,0))
+        self.lbl_artist = tk.Label(ctrl, text="", font=self.font_sub, fg="#1db954", bg="#121212", anchor="w")
+        self.lbl_artist.pack(fill="x")
+        
+        btn = tk.Frame(ctrl, bg="#121212")
+        btn.pack(pady=20)
+        c_style = {"font": font.Font(family="Helvetica", size=20, weight="bold"), "bg": "#121212", "fg": "#fff", "bd": 0, "activebackground": "#222"}
+        tk.Button(btn, text="⏮", command=lambda: self.sp.previous_track() if self.sp else None, **c_style).pack(side="left", padx=15)
+        self.btn_play = tk.Button(btn, text="▶", font=font.Font(size=24), bg="#1db954", fg="#fff", bd=0, command=self._sp_play_pause, width=3)
+        self.btn_play.pack(side="left", padx=15)
+        tk.Button(btn, text="⏭", command=lambda: self.sp.next_track() if self.sp else None, **c_style).pack(side="left", padx=15)
+        
+        self.vol_canvas = tk.Canvas(ctrl, width=200, height=20, bg="#121212", highlightthickness=0)
+        self.vol_canvas.pack(pady=(10, 20))
+        self.vol_canvas.bind("<B1-Motion>", self._on_vol_drag)
+        self.vol_canvas.bind("<Button-1>", self._on_vol_drag)
+        
+        b_frame = tk.Frame(ctrl, bg="#121212")
+        b_frame.pack(fill="x", side="bottom", pady=20)
+        tk.Button(b_frame, text="Select Output", bg="#222", fg="#fff", bd=0, font=self.font_body, command=self._trigger_device_modal).pack(side="left", ipady=10, ipadx=10)
+        tk.Button(b_frame, text="Select Playlist", bg="#222", fg="#fff", bd=0, font=self.font_body, command=self._trigger_playlist_modal).pack(side="right", ipady=10, ipadx=10)
+
+        threading.Thread(target=self._poll_spotify_state, daemon=True).start()
+
+    def _trigger_device_modal(self):
+        opts = [d['name'] for d in getattr(self, 'sp', None).devices().get('devices', [])] if getattr(self, 'sp', None) else ["No devices"]
+        TouchModal(self.root, "Select Output Device", opts, self._sp_transfer)
+
+    def _trigger_playlist_modal(self):
+        opts = list(getattr(self, 'playlist_dict', {}).keys()) if getattr(self, 'playlist_dict', None) else ["No playlists"]
+        TouchModal(self.root, "Select Playlist", opts, self._sp_play_playlist)
+
+    def _sp_transfer(self, target_name):
+        if not getattr(self, 'sp', None): return
+        for d in self.sp.devices().get('devices', []):
+            if d['name'] == target_name:
+                try: self.sp.transfer_playback(device_id=d['id'], force_play=True)
+                except: pass
+                break
+
+    def _sp_play_playlist(self, p_name):
+        if not getattr(self, 'sp', None): return
+        p_uri = getattr(self, 'playlist_dict', {}).get(p_name)
+        if p_uri:
+            try: self.sp.start_playback(context_uri=p_uri)
+            except: pass
+
+    def _poll_spotify_state(self):
+        if not getattr(self, 'sp', None): return
+        try:
+            playlists = self.sp.current_user_playlists(limit=20).get('items', [])
+            self.playlist_dict = {p['name']: p['uri'] for p in playlists if p}
+        except: pass
+        while True:
+            if getattr(self, 'vinyl_active', False):
+                try:
+                    pb = self.sp.current_playback()
+                    if pb and pb.get('item'):
+                        t = pb['item']
+                        t_id, t_name, a_name = t['id'], t['name'], t['artists'][0]['name']
+                        if t_id != getattr(self, 'current_track_id', None):
+                            self.current_track_id = t_id
+                            try:
+                                res = requests.get(t['album']['images'][0]['url'], timeout=5)
+                                img = Image.open(io.BytesIO(res.content)).convert("RGBA")
+                                self.album_art_image = self._mask_circle(img, 140)
+                                self.root.after(0, self._draw_vinyl)
+                            except: pass
+                        self.root.after(0, lambda n=t_name, a=a_name, p=pb['is_playing'], v=pb['device']['volume_percent']: self._update_sp_ui(n, a, p, v))
+                except: pass
+            time.sleep(3)
+
+    def _update_sp_ui(self, n, a, p, v):
+        if not getattr(self, 'vinyl_active', False): return
+        self.lbl_track.config(text=n[:25])
+        self.lbl_artist.config(text=a)
+        self.btn_play.config(text="⏸" if p else "▶")
+        self.vol_canvas.delete("all")
+        self.vol_canvas.create_line(0, 10, 200, 10, fill="#404040", width=4, capstyle=tk.ROUND)
+        fill_w = max(4, (v/100) * 200) if v else 4
+        self.vol_canvas.create_line(0, 10, fill_w, 10, fill="#1db954", width=4, capstyle=tk.ROUND)
+        self.vol_canvas.create_oval(fill_w-6, 4, fill_w+6, 16, fill="#fff", outline="")
+
+    def _on_vol_drag(self, e):
+        if not getattr(self, 'sp', None): return
+        v = int((max(0, min(e.x, 200)) / 200) * 100)
+        self._update_sp_ui("...", "...", False, v)
+        if hasattr(self, '_vol_timer'): self.root.after_cancel(self._vol_timer)
+        self._vol_timer = self.root.after(300, lambda: self.sp.volume(v) if self.sp else None)
+
+    def _mask_circle(self, img, size):
+        img = img.resize((size, size), Image.LANCZOS)
+        mask = Image.new('L', (size, size), 0)
+        ImageDraw.Draw(mask).ellipse((0, 0, size, size), fill=255)
+        out = Image.new('RGBA', (size, size), (0,0,0,0))
+        out.paste(img, (0,0), mask)
+        return out
+
+    def _draw_vinyl(self):
+        s = 300
+        img = Image.new('RGBA', (s, s), (18, 18, 18, 0))
+        d = ImageDraw.Draw(img)
+        d.ellipse((0, 0, s, s), fill=(20, 20, 20, 255), outline=(40, 40, 40, 255))
+        for i in range(20, 100, 15): d.ellipse((i, i, s-i, s-i), outline=(30, 30, 30, 255))
+        if getattr(self, 'album_art_image', None): img.paste(self.album_art_image, ((s-140)//2, (s-140)//2), self.album_art_image)
+        else: d.ellipse((80, 80, 220, 220), fill=(29, 185, 84, 255))
+        d.ellipse((145, 145, 155, 155), fill=(18, 18, 18, 255))
+        self.base_vinyl = img
+
+    def _animate_vinyl(self):
+        if not getattr(self, 'vinyl_active', False): return
+        self.vinyl_angle = getattr(self, 'vinyl_angle', 0)
+        self.vinyl_angle = (self.vinyl_angle - 1) % 360
+        self.cached_vinyl_img = ImageTk.PhotoImage(getattr(self, 'base_vinyl', Image.new('RGBA', (300,300))).rotate(self.vinyl_angle, resample=Image.BICUBIC))
+        self.vinyl_canvas.delete("all")
+        self.vinyl_canvas.create_image(175, 175, image=self.cached_vinyl_img)
+        self.vinyl_job = self.root.after(30, self._animate_vinyl)
+
+    def _sp_play_pause(self):
+        if not getattr(self, 'sp', None): return
+        try:
+            pb = self.sp.current_playback()
+            if pb and pb.get('is_playing'): self.sp.pause_playback()
+            else: self.sp.start_playback()
+        except Exception: pass
+
+    # ==========================================
     # OS PIPELINES
     # ==========================================
     def wake_display(self):
