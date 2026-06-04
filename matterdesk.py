@@ -71,7 +71,7 @@ class TouchModal(tk.Toplevel):
 class MatterDeskCore:
     def __init__(self):
         self.system_logs = []
-        self.log("System Initializing - MatterDesk v3.0 (Bento Grid Engine)")
+        self.log("System Initializing - MatterDesk v3.1 (macOS UX Engine)")
         
         self.root = tk.Tk()
         self.root.overrideredirect(True)
@@ -92,6 +92,9 @@ class MatterDeskCore:
         self._init_spotify()
         self._init_firebase()
         
+        # Build System UI Frames
+        self._build_boot_ui()
+        self._build_ota_ui()
         self._build_main_menu()
         self._build_spotify_ui()
         self._build_study_ui()
@@ -102,9 +105,15 @@ class MatterDeskCore:
         self._build_telemetry_bar()
         self._build_thermal_panic_ui()
         
-        self.nav_to("main")
+        # Triple-Tap Global Listener
+        self.tap_times = []
+        self.root.bind("<Button-1>", self._global_tap_handler, add="+")
         
-        # Core Threads
+        # Execute Apple-Style Boot Sequence
+        self.nav_to("boot")
+        self.root.after(100, self._animate_boot_screen)
+        
+        # Core Background Threads
         threading.Thread(target=self.touch_listener, daemon=True).start()
         threading.Thread(target=self._hardware_telemetry_loop, daemon=True).start()
         threading.Thread(target=self._weather_telemetry_loop, daemon=True).start()
@@ -148,6 +157,68 @@ class MatterDeskCore:
     def _create_round_rect(self, canvas, x1, y1, x2, y2, radius=20, **kwargs):
         points = [x1+radius, y1, x1+radius, y1, x2-radius, y1, x2-radius, y1, x2, y1, x2, y1+radius, x2, y1+radius, x2, y2-radius, x2, y2-radius, x2, y2, x2-radius, y2, x2-radius, y2, x1+radius, y2, x1+radius, y2, x1, y2, x1, y2-radius, x1, y2-radius, x1, y1+radius, x1, y1+radius, x1, y1]
         return canvas.create_polygon(points, **kwargs, smooth=True)
+
+    def _global_tap_handler(self, event):
+        now = time.time()
+        self.tap_times.append(now)
+        # Prune taps older than 800ms
+        self.tap_times = [t for t in self.tap_times if now - t < 0.8]
+        if len(self.tap_times) >= 3:
+            self.tap_times.clear()
+            if not self.is_asleep:
+                self.sleep_display()
+
+    # ==========================================
+    # APPLE-STYLE BOOT & OTA UX
+    # ==========================================
+    def _build_boot_ui(self):
+        f = tk.Frame(self.root, bg="#000000")
+        f.place(x=0, y=0, relwidth=1, relheight=1)
+        self.frames["boot"] = f
+        self.boot_canvas = tk.Canvas(f, width=800, height=480, bg="#000000", highlightthickness=0)
+        self.boot_canvas.pack()
+        
+        # Apple Logo Character (Fallback to DRAFTSMAN text if missing from Linux font)
+        self.boot_canvas.create_text(400, 200, text="", font=font.Font(family="Helvetica", size=80), fill="#ffffff")
+        self.boot_canvas.create_text(400, 260, text="DRAFTSMAN", font=font.Font(family="Helvetica", size=14, weight="bold"), fill="#555555")
+        
+        self.boot_canvas.create_rectangle(300, 320, 500, 324, fill="#222222", outline="")
+        self.boot_bar = self.boot_canvas.create_rectangle(300, 320, 300, 324, fill="#ffffff", outline="")
+
+    def _animate_boot_screen(self, progress=0):
+        if progress > 200:
+            self.nav_to("main")
+            return
+        self.boot_canvas.coords(self.boot_bar, 300, 320, 300 + progress, 324)
+        step = 6 if progress < 120 else 3
+        self.root.after(30, self._animate_boot_screen, progress + step)
+
+    def _build_ota_ui(self):
+        f = tk.Frame(self.root, bg="#000000")
+        f.place(x=0, y=0, relwidth=1, relheight=1)
+        self.frames["ota"] = f
+        self.ota_canvas = tk.Canvas(f, width=800, height=480, bg="#000000", highlightthickness=0)
+        self.ota_canvas.pack()
+        
+        self.ota_canvas.create_text(400, 200, text="", font=font.Font(family="Helvetica", size=80), fill="#ffffff")
+        self.ota_canvas.create_rectangle(300, 320, 500, 324, fill="#222222", outline="")
+        self.ota_bar = self.ota_canvas.create_rectangle(300, 320, 300, 324, fill="#ffffff", outline="")
+        self.ota_text = self.ota_canvas.create_text(400, 350, text="Preparing Update...", font=font.Font(family="Helvetica", size=12), fill="#aaaaaa")
+
+    def _animate_ota_bar(self):
+        if getattr(self, 'ota_finished', False):
+            self.ota_canvas.coords(self.ota_bar, 300, 320, 500, 324)
+            self.ota_canvas.itemconfig(self.ota_text, text="Restarting Firmware...")
+            return
+        if getattr(self, 'ota_error', False):
+            self.ota_canvas.itemconfig(self.ota_text, text="Verification Failed. Rebooting...", fill="#ff4444")
+            return
+            
+        if not hasattr(self, 'ota_progress'): self.ota_progress = 0
+        if self.ota_progress < 180: # Stall at 90% until backend thread finishes
+            self.ota_progress += 2
+            self.ota_canvas.coords(self.ota_bar, 300, 320, 300 + self.ota_progress, 324)
+        self.root.after(50, self._animate_ota_bar)
 
     # ==========================================
     # GLOBAL HARDWARE TELEMETRY & THERMALS
@@ -222,7 +293,7 @@ class MatterDeskCore:
         self.nav_to("main")
 
     # ==========================================
-    # UI BUILDERS: v3.0 MAIN MENU (BENTO GRID)
+    # UI BUILDERS: v3.1 MAIN MENU (BENTO GRID)
     # ==========================================
     def _build_main_menu(self):
         f = tk.Frame(self.root)
@@ -266,7 +337,7 @@ class MatterDeskCore:
             ("Spotify", "#0a2a10", "#1db954", lambda: self.nav_to("spotify")),
             ("Study", "#12123a", "#88aaff", lambda: self.nav_to("study")),
             ("Settings", "#222222", "#ddd", lambda: self.nav_to("settings")),
-            ("Power", "#2a0000", "#ff4444", self.poweroff_system)
+            ("Power", "#2a0000", "#ff4444", self._show_power_menu)
         ]
         
         self.app_hitboxes = []
@@ -344,7 +415,6 @@ class MatterDeskCore:
         for ui_key, db_key in keys_map.items():
             val = data.get(db_key)
             if val is not None:
-                # Math: X spans 480 to 720 (Width 240)
                 width = int((val / 100.0) * 240)
                 self.home_canvas.coords(self.batt_ui[ui_key]["bar"], 480, self.home_canvas.coords(self.batt_ui[ui_key]["bar"])[1], 480 + width, self.home_canvas.coords(self.batt_ui[ui_key]["bar"])[3])
                 self.home_canvas.itemconfig(self.batt_ui[ui_key]["text"], text=f"{val}%")
@@ -374,7 +444,7 @@ class MatterDeskCore:
         try:
             if not firebase_admin._apps:
                 cred = credentials.Certificate(FIREBASE_KEY_PATH)
-                firebase_admin.initialize_app(cred, {'databaseURL': 'https://YOUR-PROJECT-ID.firebaseio.com/'})
+                firebase_admin.initialize_app(cred, {'databaseURL': 'https://draftsman-matterdesk-default-rtdb.firebaseio.com/'})
             self.firebase_active = True
             self.log("Firebase Database link active.")
         except Exception as e:
@@ -578,109 +648,6 @@ class MatterDeskCore:
             self.root.after(0, lambda: self.nav_to("study"))
 
     # ==========================================
-    # SETTINGS & OTA UPDATER
-    # ==========================================
-    def _build_settings_ui(self):
-        f = tk.Frame(self.root, bg="#121212")
-        f.place(x=0, y=0, relwidth=1, relheight=1)
-        self.frames["settings"] = f
-        
-        top = tk.Frame(f, bg="#121212", height=40)
-        top.pack(fill="x", padx=10, pady=10)
-        tk.Button(top, text="< BACK", font=self.font_body, bg="#121212", fg="#fff", bd=0, command=lambda: self.nav_to("main")).pack(side="left")
-        
-        wifi_frame = tk.Frame(f, bg="#121212")
-        wifi_frame.pack(side="left", fill="both", expand=True, padx=20)
-        tk.Label(wifi_frame, text="NETWORK", font=self.font_sub, fg="#1db954", bg="#121212").pack(anchor="w")
-        self.btn_wifi_sel = tk.Button(wifi_frame, text="Select Wi-Fi Network", font=self.font_sub, bg="#1a1a1a", fg="#fff", bd=0, command=self._trigger_wifi_modal)
-        self.btn_wifi_sel.pack(fill="x", pady=10, ipady=15)
-        self.entry_pass = tk.Entry(wifi_frame, font=self.font_header, bg="#0a0a0a", fg="#fff", bd=0, highlightthickness=1, highlightbackground="#333", show="*")
-        self.entry_pass.pack(fill="x", pady=10, ipady=5)
-        self.btn_connect = tk.Button(wifi_frame, text="CONNECT", font=self.font_sub, bg="#222", fg="#fff", bd=0, command=self._connect_wifi)
-        self.btn_connect.pack(fill="x", ipady=15)
-
-        right_frame = tk.Frame(f, bg="#121212")
-        right_frame.pack(side="right", fill="both", expand=True, padx=20)
-        self.btn_ota = tk.Button(right_frame, text="UPDATE SYSTEM (GITHUB OTA)", font=self.font_sub, bg="#1a2a4a", fg="#88aaff", bd=0, command=self._exec_ota)
-        self.btn_ota.pack(fill="x", pady=(0, 10), ipady=10)
-        
-        row2 = tk.Frame(right_frame, bg="#121212")
-        row2.pack(fill="x", pady=(0, 10))
-        tk.Button(row2, text="DIAGNOSTICS", font=self.font_sub, bg="#333", fg="#fff", bd=0, command=lambda: self.nav_to("diagnostics")).pack(side="left", fill="x", expand=True, padx=(0,5), ipady=10)
-        tk.Button(row2, text="SYSTEM LOGS", font=self.font_sub, bg="#333", fg="#fff", bd=0, command=lambda: self.nav_to("logs")).pack(side="right", fill="x", expand=True, padx=(5,0), ipady=10)
-        self._build_osk(right_frame)
-
-    def _trigger_wifi_modal(self):
-        self.log("Scanning Wi-Fi interfaces...")
-        try:
-            out = subprocess.check_output(['nmcli', '-t', '-f', 'SSID', 'dev', 'wifi']).decode()
-            networks = list(set([n for n in out.split('\n') if n.strip()]))
-        except: networks = ["Scan Failed"]
-        TouchModal(self.root, "Available Networks", networks, lambda s: self.btn_wifi_sel.config(text=s))
-
-    def _build_osk(self, parent):
-        kbd = tk.Frame(parent, bg="#121212")
-        kbd.pack(fill="both", expand=True)
-        keys = [['1','2','3','4','5','6','7','8','9','0'], ['q','w','e','r','t','y','u','i','o','p'], ['a','s','d','f','g','h','j','k','l','DEL'], ['z','x','c','v','b','n','m','_','@','!']]
-        for r, row in enumerate(keys):
-            kbd.rowconfigure(r, weight=1)
-            for c, key in enumerate(row):
-                kbd.columnconfigure(c, weight=1)
-                bg = "#333333" if key == "DEL" else "#1a1a1a"
-                tk.Button(kbd, text=key, font=self.font_sub, bg=bg, fg="#fff", bd=0, activebackground="#444", command=lambda k=key: self._osk_press(k)).grid(row=r, column=c, sticky="nsew", padx=2, pady=2)
-
-    def _osk_press(self, key):
-        if key == "DEL":
-            txt = self.entry_pass.get()
-            self.entry_pass.delete(0, tk.END)
-            self.entry_pass.insert(0, txt[:-1])
-        else: self.entry_pass.insert(tk.END, key)
-
-    def _connect_wifi(self):
-        ssid = self.btn_wifi_sel.cget("text")
-        pw = self.entry_pass.get()
-        if ssid == "Select Wi-Fi Network" or not ssid: return
-        self.btn_connect.config(text="Linking...", fg="#ffaa00")
-        self.log(f"Attempting Wi-Fi connection to: {ssid}")
-        threading.Thread(target=self._exec_connect, args=(ssid, pw), daemon=True).start()
-
-    def _exec_connect(self, ssid, pw):
-        try:
-            cmd = ['nmcli', 'dev', 'wifi', 'connect', ssid]
-            if pw: cmd.extend(['password', pw])
-            subprocess.check_call(cmd)
-            self.log(f"Wi-Fi Connected successfully to {ssid}")
-            self.root.after(0, lambda: self.btn_connect.config(text="CONNECTED", fg="#1db954"))
-        except Exception as e:
-            self.log(f"Wi-Fi Connection Failed: {e}")
-            self.root.after(0, lambda: self.btn_connect.config(text="FAILED", fg="#ff4444"))
-
-    def _exec_ota(self):
-        self.log("Triggering OTA Git fetch/reset.")
-        self.btn_ota.config(text="FETCHING REPOSITORY...", bg="#ffaa00")
-        threading.Thread(target=self._ota_thread, daemon=True).start()
-
-    def _ota_thread(self):
-        try:
-            cwd = "/home/st6b/matterdesk"
-            subprocess.run(["git", "config", "--global", "--add", "safe.directory", cwd], check=False)
-            subprocess.run(["git", "remote", "remove", "origin"], cwd=cwd, stderr=subprocess.DEVNULL)
-            subprocess.run(["git", "remote", "add", "origin", GITHUB_REPO_URL], cwd=cwd)
-            fetch = subprocess.run(["git", "fetch", "origin", "main"], cwd=cwd, capture_output=True, text=True)
-            self.log(f"Git Fetch: {fetch.stdout} | {fetch.stderr}")
-            if fetch.returncode != 0: raise Exception(f"Fetch failed: {fetch.stderr}")
-            reset = subprocess.run(["git", "reset", "--hard", "origin/main"], cwd=cwd, capture_output=True, text=True)
-            self.log(f"Git Reset: {reset.stdout} | {reset.stderr}")
-            if reset.returncode != 0: raise Exception(f"Reset failed: {reset.stderr}")
-            self.log("OTA updated successfully. Rebooting daemon.")
-            self.root.after(0, lambda: self.btn_ota.config(text="RESTARTING DAEMON...", bg="#1db954"))
-            time.sleep(1)
-            os.system("sudo systemctl restart matterdesk.service")
-        except Exception as e:
-            self.log(f"OTA Failed: {e}")
-            self.root.after(0, lambda: self.btn_ota.config(text="OTA FAILED. CHECK LOGS.", bg="#ff4444"))
-
-    # ==========================================
     # SYSTEM LOGS & DIAGNOSTICS
     # ==========================================
     def _build_logs_ui(self):
@@ -792,6 +759,114 @@ class MatterDeskCore:
         except Exception as e:
             self.log(f"Thermal Error: {e}")
             TouchModal(self.root, "Thermal Readout", ["Sensor read failed."], lambda x: None)
+
+    # ==========================================
+    # SETTINGS & OTA UPDATER
+    # ==========================================
+    def _build_settings_ui(self):
+        f = tk.Frame(self.root, bg="#121212")
+        f.place(x=0, y=0, relwidth=1, relheight=1)
+        self.frames["settings"] = f
+        
+        top = tk.Frame(f, bg="#121212", height=40)
+        top.pack(fill="x", padx=10, pady=10)
+        tk.Button(top, text="< BACK", font=self.font_body, bg="#121212", fg="#fff", bd=0, command=lambda: self.nav_to("main")).pack(side="left")
+        
+        wifi_frame = tk.Frame(f, bg="#121212")
+        wifi_frame.pack(side="left", fill="both", expand=True, padx=20)
+        tk.Label(wifi_frame, text="NETWORK", font=self.font_sub, fg="#1db954", bg="#121212").pack(anchor="w")
+        self.btn_wifi_sel = tk.Button(wifi_frame, text="Select Wi-Fi Network", font=self.font_sub, bg="#1a1a1a", fg="#fff", bd=0, command=self._trigger_wifi_modal)
+        self.btn_wifi_sel.pack(fill="x", pady=10, ipady=15)
+        self.entry_pass = tk.Entry(wifi_frame, font=self.font_header, bg="#0a0a0a", fg="#fff", bd=0, highlightthickness=1, highlightbackground="#333", show="*")
+        self.entry_pass.pack(fill="x", pady=10, ipady=5)
+        self.btn_connect = tk.Button(wifi_frame, text="CONNECT", font=self.font_sub, bg="#222", fg="#fff", bd=0, command=self._connect_wifi)
+        self.btn_connect.pack(fill="x", ipady=15)
+
+        right_frame = tk.Frame(f, bg="#121212")
+        right_frame.pack(side="right", fill="both", expand=True, padx=20)
+        self.btn_ota = tk.Button(right_frame, text="UPDATE SYSTEM (GITHUB OTA)", font=self.font_sub, bg="#1a2a4a", fg="#88aaff", bd=0, command=self._exec_ota)
+        self.btn_ota.pack(fill="x", pady=(0, 10), ipady=10)
+        
+        row2 = tk.Frame(right_frame, bg="#121212")
+        row2.pack(fill="x", pady=(0, 10))
+        tk.Button(row2, text="DIAGNOSTICS", font=self.font_sub, bg="#333", fg="#fff", bd=0, command=lambda: self.nav_to("diagnostics")).pack(side="left", fill="x", expand=True, padx=(0,5), ipady=10)
+        tk.Button(row2, text="SYSTEM LOGS", font=self.font_sub, bg="#333", fg="#fff", bd=0, command=lambda: self.nav_to("logs")).pack(side="right", fill="x", expand=True, padx=(5,0), ipady=10)
+        self._build_osk(right_frame)
+
+    def _trigger_wifi_modal(self):
+        self.log("Scanning Wi-Fi interfaces...")
+        try:
+            out = subprocess.check_output(['nmcli', '-t', '-f', 'SSID', 'dev', 'wifi']).decode()
+            networks = list(set([n for n in out.split('\n') if n.strip()]))
+        except: networks = ["Scan Failed"]
+        TouchModal(self.root, "Available Networks", networks, lambda s: self.btn_wifi_sel.config(text=s))
+
+    def _build_osk(self, parent):
+        kbd = tk.Frame(parent, bg="#121212")
+        kbd.pack(fill="both", expand=True)
+        keys = [['1','2','3','4','5','6','7','8','9','0'], ['q','w','e','r','t','y','u','i','o','p'], ['a','s','d','f','g','h','j','k','l','DEL'], ['z','x','c','v','b','n','m','_','@','!']]
+        for r, row in enumerate(keys):
+            kbd.rowconfigure(r, weight=1)
+            for c, key in enumerate(row):
+                kbd.columnconfigure(c, weight=1)
+                bg = "#333333" if key == "DEL" else "#1a1a1a"
+                tk.Button(kbd, text=key, font=self.font_sub, bg=bg, fg="#fff", bd=0, activebackground="#444", command=lambda k=key: self._osk_press(k)).grid(row=r, column=c, sticky="nsew", padx=2, pady=2)
+
+    def _osk_press(self, key):
+        if key == "DEL":
+            txt = self.entry_pass.get()
+            self.entry_pass.delete(0, tk.END)
+            self.entry_pass.insert(0, txt[:-1])
+        else: self.entry_pass.insert(tk.END, key)
+
+    def _connect_wifi(self):
+        ssid = self.btn_wifi_sel.cget("text")
+        pw = self.entry_pass.get()
+        if ssid == "Select Wi-Fi Network" or not ssid: return
+        self.btn_connect.config(text="Linking...", fg="#ffaa00")
+        self.log(f"Attempting Wi-Fi connection to: {ssid}")
+        threading.Thread(target=self._exec_connect, args=(ssid, pw), daemon=True).start()
+
+    def _exec_connect(self, ssid, pw):
+        try:
+            cmd = ['nmcli', 'dev', 'wifi', 'connect', ssid]
+            if pw: cmd.extend(['password', pw])
+            subprocess.check_call(cmd)
+            self.log(f"Wi-Fi Connected successfully to {ssid}")
+            self.root.after(0, lambda: self.btn_connect.config(text="CONNECTED", fg="#1db954"))
+        except Exception as e:
+            self.log(f"Wi-Fi Connection Failed: {e}")
+            self.root.after(0, lambda: self.btn_connect.config(text="FAILED", fg="#ff4444"))
+
+    def _exec_ota(self):
+        self.log("Triggering Apple-Style OTA GUI.")
+        self.nav_to("ota")
+        self.ota_progress = 0
+        self.ota_finished = False
+        self.ota_error = False
+        self._animate_ota_bar()
+        threading.Thread(target=self._ota_thread, daemon=True).start()
+
+    def _ota_thread(self):
+        try:
+            cwd = "/home/st6b/matterdesk"
+            subprocess.run(["git", "config", "--global", "--add", "safe.directory", cwd], check=False)
+            subprocess.run(["git", "remote", "remove", "origin"], cwd=cwd, stderr=subprocess.DEVNULL)
+            subprocess.run(["git", "remote", "add", "origin", GITHUB_REPO_URL], cwd=cwd)
+            fetch = subprocess.run(["git", "fetch", "origin", "main"], cwd=cwd, capture_output=True, text=True)
+            if fetch.returncode != 0: raise Exception(f"Fetch failed: {fetch.stderr}")
+            reset = subprocess.run(["git", "reset", "--hard", "origin/main"], cwd=cwd, capture_output=True, text=True)
+            if reset.returncode != 0: raise Exception(f"Reset failed: {reset.stderr}")
+            
+            self.log("OTA firmware updated successfully.")
+            self.ota_finished = True
+            time.sleep(1.5)
+            os.system("sudo systemctl restart matterdesk.service")
+        except Exception as e:
+            self.log(f"OTA Failed: {e}")
+            self.ota_error = True
+            time.sleep(3)
+            self.root.after(0, lambda: self.nav_to("settings"))
 
     # ==========================================
     # SPOTIFY SUBSYSTEM
@@ -957,6 +1032,14 @@ class MatterDeskCore:
         self.kill_active_processes()
         self.root.geometry("800x480+0+0")
         self.nav_to("main")
+
+    def _show_power_menu(self):
+        TouchModal(self.root, "System Power", ["Standby", "Reboot", "Power Off"], self._handle_power_choice)
+
+    def _handle_power_choice(self, choice):
+        if choice == "Standby": self.sleep_display()
+        elif choice == "Reboot": self.reboot_system()
+        elif choice == "Power Off": self.poweroff_system()
 
     def launch_uxplay(self):
         self.kill_active_processes()
