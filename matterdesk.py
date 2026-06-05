@@ -21,7 +21,6 @@ BACKLIGHT_POWER = '/sys/class/backlight/10-0045/bl_power'
 BACKLIGHT_BRIGHT = '/sys/class/backlight/10-0045/brightness'
 TOUCH_DEVICE = '/dev/input/event4'
 CARPLAY_DIR = '/home/st6b/matterdesk/carplay-engine'
-BOOTLOADER_IMG = '/home/st6b/matterdesk/images/bootloader.png'
 LOGO_IMG_PATH = '/home/st6b/matterdesk/images/logo.png'
 FIREBASE_KEY_PATH = '/home/st6b/matterdesk/serviceAccountKey.json'
 GITHUB_REPO_URL = 'https://github.com/parthchhabraa/DraftsmanMatterDesk.git'
@@ -72,7 +71,7 @@ class TouchModal(tk.Toplevel):
 class MatterDeskCore:
     def __init__(self):
         self.system_logs = []
-        self.log("System Initializing - MatterDesk v3.4 (macOS UX Engine)")
+        self.log("System Initializing - MatterDesk v3.5 (Standby Engine)")
         
         self.root = tk.Tk()
         self.root.overrideredirect(True)
@@ -82,6 +81,8 @@ class MatterDeskCore:
         
         self.is_asleep = False
         self.active_process = self.aux_process = None 
+        self.last_interaction = time.time()
+        self.idle_timeout = 600  # 10 minutes
         
         self.font_header = font.Font(family="Helvetica", size=22, weight="bold")
         self.font_sub = font.Font(family="Helvetica", size=14, weight="bold")
@@ -95,6 +96,7 @@ class MatterDeskCore:
         
         self._build_boot_ui()
         self._build_ota_ui()
+        self._build_standby_ui()
         self._build_main_menu()
         self._build_spotify_ui()
         self._build_study_ui()
@@ -134,7 +136,14 @@ class MatterDeskCore:
 
     def nav_to(self, frame_name):
         self.frames[frame_name].tkraise()
-        self.frames["telemetry_bar"].tkraise()
+        
+        # Suppress telemetry bar during active full-screen overrides
+        if frame_name in ["boot", "ota", "standby"]:
+            self.frames["telemetry_bar"].place_forget()
+        else:
+            self.frames["telemetry_bar"].place(x=0, y=465, width=800, height=15)
+            self.frames["telemetry_bar"].tkraise()
+            
         self.vinyl_active = (frame_name == "spotify")
         if self.vinyl_active and getattr(self, 'vinyl_job', None) is None: 
             self._animate_vinyl()
@@ -157,6 +166,7 @@ class MatterDeskCore:
 
     def _global_tap_handler(self, event):
         now = time.time()
+        self.last_interaction = now
         self.tap_times.append(now)
         self.tap_times = [t for t in self.tap_times if now - t < 0.8]
         if len(self.tap_times) >= 3:
@@ -189,7 +199,6 @@ class MatterDeskCore:
             return
         
         self.boot_canvas.coords(self.boot_bar, 300, 320, 300 + progress, 324)
-
         step = 6 if progress < 120 else 3
         self.root.after(40, self._animate_boot_screen, progress + step)
 
@@ -236,6 +245,8 @@ class MatterDeskCore:
         self.lbl_hw_cpu.pack(side="left", padx=10)
         self.lbl_hw_ram = tk.Label(f, text="RAM: 0%", font=("Helvetica", 8, "bold"), fg="#888", bg="#000")
         self.lbl_hw_ram.pack(side="left", padx=10)
+        self.lbl_hw_up = tk.Label(f, text="UP: 0m", font=("Helvetica", 8, "bold"), fg="#888", bg="#000")
+        self.lbl_hw_up.pack(side="left", padx=10)
         self.lbl_hw_temp = tk.Label(f, text="TEMP: 0°C", font=("Helvetica", 8, "bold"), fg="#888", bg="#000")
         self.lbl_hw_temp.pack(side="right", padx=10)
         self.thermal_panic = False
@@ -254,17 +265,29 @@ class MatterDeskCore:
     def _hardware_telemetry_loop(self):
         while True:
             try:
+                # Idle Core Constraint
+                if not self.is_asleep and (time.time() - self.last_interaction > self.idle_timeout):
+                    self.root.after(0, self.sleep_display)
+
                 cpu = psutil.cpu_percent()
                 ram = psutil.virtual_memory().percent
+                
+                up_sec = time.time() - psutil.boot_time()
+                d = int(up_sec // 86400)
+                h = int((up_sec % 86400) // 3600)
+                m = int((up_sec % 3600) // 60)
+                up_str = f"UP: {d}d {h}h" if d > 0 else f"UP: {h}h {m}m"
+                
                 temp_c = 0.0
                 try:
                     with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f: temp_c = float(f.read()) / 1000.0
                 except: pass
+                
                 cpu_col = "#ff4444" if cpu > 85 else "#888"
                 ram_col = "#ff4444" if ram > 85 else "#888"
                 tmp_col = "#ff4444" if temp_c > 75 else ("#ffaa00" if temp_c > 65 else "#888")
 
-                self.root.after(0, lambda c=cpu, r=ram, t=temp_c, cc=cpu_col, rc=ram_col, tc=tmp_col: self._update_telemetry(c, r, t, cc, rc, tc))
+                self.root.after(0, lambda c=cpu, r=ram, t=temp_c, u=up_str, cc=cpu_col, rc=ram_col, tc=tmp_col: self._update_telemetry(c, r, t, u, cc, rc, tc))
 
                 if temp_c >= 82.0 and not self.thermal_panic:
                     self.thermal_panic = True
@@ -273,9 +296,10 @@ class MatterDeskCore:
             except Exception: pass
             time.sleep(2)
 
-    def _update_telemetry(self, c, r, t, cc, rc, tc):
+    def _update_telemetry(self, c, r, t, u, cc, rc, tc):
         self.lbl_hw_cpu.config(text=f"CPU: {c}%", fg=cc)
         self.lbl_hw_ram.config(text=f"RAM: {r}%", fg=rc)
+        self.lbl_hw_up.config(text=u)
         self.lbl_hw_temp.config(text=f"TEMP: {t:.1f}°C", fg=tc)
 
     def _trigger_panic(self):
@@ -358,6 +382,7 @@ class MatterDeskCore:
         self.home_canvas.bind("<Button-1>", self._handle_home_click)
 
     def _handle_home_click(self, event):
+        self.last_interaction = time.time()
         for x1, y1, x2, y2, cmd in self.app_hitboxes:
             if x1 <= event.x <= x2 and y1 <= event.y <= y2:
                 cmd()
@@ -366,7 +391,9 @@ class MatterDeskCore:
     # --- Active Telemetry Threads ---
     def _clock_tick(self):
         now = datetime.datetime.now()
-        self.home_canvas.itemconfig(self.clock_id, text=now.strftime("%H:%M"))
+        t_str = now.strftime("%I:%M %p")
+        if t_str.startswith("0"): t_str = t_str[1:]
+        self.home_canvas.itemconfig(self.clock_id, text=t_str)
         
         h = now.hour
         if h < 12: greet = "Good morning,"
@@ -429,6 +456,34 @@ class MatterDeskCore:
         self.lbl_waiting = tk.Label(f_wait, text="Waiting...", font=self.font_header, fg="#ffffff", bg="#050505")
         self.lbl_waiting.pack(pady=(150, 20))
         tk.Button(f_wait, text="Cancel", font=self.font_sub, bg="#1a1a1a", fg="#ff4444", bd=0, command=self.wake_display).pack(ipadx=20, ipady=10)
+
+    # ==========================================
+    # STANDBY SCREENSAVER (ANTI-BURN)
+    # ==========================================
+    def _build_standby_ui(self):
+        f = tk.Frame(self.root, bg="#000000")
+        f.place(x=0, y=0, relwidth=1, relheight=1)
+        self.frames["standby"] = f
+        self.ss_canvas = tk.Canvas(f, bg="#000000", highlightthickness=0)
+        self.ss_canvas.pack(fill="both", expand=True)
+        self.ss_text = self.ss_canvas.create_text(400, 240, text="00:00", font=font.Font(family="Helvetica", size=40, weight="bold"), fill="#222222")
+        self.ss_x, self.ss_y = 400, 240
+        self.ss_dx, self.ss_dy = 2, 2
+
+    def _animate_screensaver(self):
+        if not self.is_asleep: return
+        self.ss_x += self.ss_dx
+        self.ss_y += self.ss_dy
+        
+        if self.ss_x > 700 or self.ss_x < 100: self.ss_dx *= -1
+        if self.ss_y > 430 or self.ss_y < 50: self.ss_dy *= -1
+        
+        self.ss_canvas.coords(self.ss_text, self.ss_x, self.ss_y)
+        t_str = datetime.datetime.now().strftime("%I:%M %p")
+        if t_str.startswith("0"): t_str = t_str[1:]
+        self.ss_canvas.itemconfig(self.ss_text, text=t_str)
+        
+        self.root.after(50, self._animate_screensaver)
 
     # ==========================================
     # STUDY ENGINE
@@ -811,6 +866,7 @@ class MatterDeskCore:
                 tk.Button(kbd, text=key, font=self.font_sub, bg=bg, fg="#fff", bd=0, activebackground="#444", command=lambda k=key: self._osk_press(k)).grid(row=r, column=c, sticky="nsew", padx=2, pady=2)
 
     def _osk_press(self, key):
+        self.last_interaction = time.time()
         if key == "DEL":
             txt = self.entry_pass.get()
             self.entry_pass.delete(0, tk.END)
@@ -979,6 +1035,7 @@ class MatterDeskCore:
 
     def _on_vol_drag(self, e):
         if not getattr(self, 'sp', None): return
+        self.last_interaction = time.time()
         v = int((max(0, min(e.x, 200)) / 200) * 100)
         self._update_sp_ui("...", "...", False, v)
         if hasattr(self, '_vol_timer'): self.root.after_cancel(self._vol_timer)
@@ -1026,10 +1083,19 @@ class MatterDeskCore:
     def wake_display(self):
         if self.is_asleep:
             self.is_asleep = False
+            self.last_interaction = time.time()
             os.system(f'echo 0 | sudo tee {BACKLIGHT_POWER} > /dev/null')
         self.kill_active_processes()
         self.root.geometry("800x480+0+0")
         self.nav_to("main")
+
+    def sleep_display(self):
+        if not self.is_asleep:
+            self.is_asleep = True
+            self.kill_active_processes()
+            self.nav_to("standby")
+            os.system(f'echo 1 | sudo tee {BACKLIGHT_POWER} > /dev/null')
+            self._animate_screensaver()
 
     def _show_power_menu(self):
         TouchModal(self.root, "System Power", ["Standby", "Reboot", "Power Off"], self._handle_power_choice)
@@ -1105,14 +1171,6 @@ class MatterDeskCore:
         self.active_process = self.aux_process = None
         os.system("killall uxplay node chromium-browser > /dev/null 2>&1")
 
-    def sleep_display(self):
-        if not self.is_asleep:
-            self.is_asleep = True
-            self.kill_active_processes()
-            self.nav_to("waiting")
-            self.lbl_waiting.config(text="")
-            os.system(f'echo 1 | sudo tee {BACKLIGHT_POWER} > /dev/null')
-
     def reboot_system(self): self.log("Reboot command sent."); self.kill_active_processes(); os.system("sudo reboot")
     def poweroff_system(self): self.log("Poweroff command sent."); self.kill_active_processes(); os.system("sudo poweroff")
 
@@ -1121,6 +1179,7 @@ class MatterDeskCore:
             device = evdev.InputDevice(TOUCH_DEVICE)
             last = 0
             for event in device.read_loop():
+                self.last_interaction = time.time()
                 if self.is_asleep and event.type == evdev.ecodes.EV_KEY and event.value == 1:
                     curr = time.time()
                     if curr - last < 0.6: self.root.after(0, self.wake_display)
