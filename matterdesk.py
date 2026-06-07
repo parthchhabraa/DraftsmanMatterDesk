@@ -74,7 +74,7 @@ class TouchModal(tk.Toplevel):
 class MatterDeskCore:
     def __init__(self):
         self.system_logs = []
-        self.log("System Initializing - MatterDesk v4.1 (Kinetic UI Engine)")
+        self.log("System Initializing - MatterDesk v4.2 (Kinetic UI Engine)")
         
         self.root = tk.Tk()
         self.root.overrideredirect(True)
@@ -86,7 +86,7 @@ class MatterDeskCore:
         self.prevent_sleep = False
         self.active_process = None 
         self.last_interaction = time.time()
-        self.idle_timeout = 600  # 10 minutes
+        self.idle_timeout = 600
         
         self.font_header = font.Font(family="Helvetica", size=22, weight="bold")
         self.font_sub = font.Font(family="Helvetica", size=14, weight="bold")
@@ -101,6 +101,7 @@ class MatterDeskCore:
         self._build_boot_ui()
         self._build_ota_ui()
         self._build_standby_ui()
+        self._build_wol_ui()
         self._build_main_menu()
         self._build_network_ui()
         self._build_bookmarks_ui()
@@ -146,7 +147,7 @@ class MatterDeskCore:
         self.frames[frame_name].tkraise()
         self.current_frame = frame_name
         
-        if frame_name in ["boot", "ota", "standby", "study_absolute"]:
+        if frame_name in ["boot", "ota", "standby", "study_absolute", "wol"]:
             self.frames["telemetry_bar"].place_forget()
         else:
             self.frames["telemetry_bar"].place(x=0, y=465, width=800, height=15)
@@ -273,7 +274,6 @@ class MatterDeskCore:
     def _hardware_telemetry_loop(self):
         while True:
             try:
-                # Wakelock Logic Override
                 if not self.is_asleep and not getattr(self, 'prevent_sleep', False) and (time.time() - self.last_interaction > self.idle_timeout):
                     self.root.after(0, self.sleep_display)
 
@@ -341,11 +341,12 @@ class MatterDeskCore:
         self.home_canvas.pack(fill="both", expand=True)
         self.home_canvas.create_image(0, 0, image=self.bg_image, anchor="nw")
 
-        # 1. Flip-Clock & Greeting Box
         self._create_round_rect(self.home_canvas, 20, 20, 320, 220, radius=25, fill="#121212", stipple="gray50")
-        self.home_canvas.create_text(40, 50, text="DRAFTSMAN", font=font.Font(family="Horizon", size=14, weight="bold"), fill="#1db954", anchor="w")
+        try:
+            self.home_canvas.create_text(40, 50, text="DRAFTSMAN", font=font.Font(family="Horizon", size=14, weight="bold"), fill="#1db954", anchor="w")
+        except:
+            self.home_canvas.create_text(40, 50, text="DRAFTSMAN", font=font.Font(family="Helvetica", size=14, weight="bold"), fill="#1db954", anchor="w")
         
-        # Segmented Canvas Clock
         self.clock_f = tk.Canvas(self.home_canvas, width=280, height=60, bg="#121212", highlightthickness=0)
         self.clock_f.place(x=35, y=75)
         
@@ -366,7 +367,6 @@ class MatterDeskCore:
         self.greet_id = self.home_canvas.create_text(40, 160, text="Loading...", font=font.Font(family="Helvetica", size=14), fill="#aaaaaa", anchor="w")
         self.home_canvas.create_text(40, 185, text="Parth Chhabra", font=font.Font(family="Helvetica", size=16, weight="bold"), fill="#ffffff", anchor="w")
 
-        # 2. Weather Box & Kinetic Canvas
         self._create_round_rect(self.home_canvas, 20, 240, 320, 440, radius=25, fill="#121212", stipple="gray50")
         self.wx_canvas = tk.Canvas(self.home_canvas, width=280, height=180, bg="#121212", highlightthickness=0)
         self.wx_canvas.place(x=30, y=250)
@@ -381,7 +381,6 @@ class MatterDeskCore:
         self.current_weather_type = "Clear"
         self._animate_weather()
 
-        # 3. Battery Deck (Kinetic Ranges)
         self._create_round_rect(self.home_canvas, 340, 20, 780, 200, radius=25, fill="#121212", stipple="gray50")
         self.batt_ui = {}
         devices = ["iPhone", "MacBook", "iPad"]
@@ -394,7 +393,6 @@ class MatterDeskCore:
             text_id = self.home_canvas.create_text(750, y_offset, text="--%", font=font.Font(family="Helvetica", size=12), fill="#aaa", anchor="e")
             self.batt_ui[dev.lower()] = {"bar": bar_id, "text": text_id}
 
-        # 4. App Matrix (8 Apps, 4x2 Layout)
         apps = [
             ("AirPlay", "#1a1a1a", "#fff", self.launch_uxplay),
             ("Spotify", "#0a2a10", "#1db954", lambda: self.nav_to("spotify")),
@@ -432,6 +430,7 @@ class MatterDeskCore:
     def _clock_tick(self):
         now = datetime.datetime.now()
         h = now.strftime("%I")
+        if h.startswith("0"): h = h[1:]
         m = now.strftime("%M")
         s = now.strftime("%S")
         ap = now.strftime("%p")
@@ -467,6 +466,10 @@ class MatterDeskCore:
         self.root.after(10, self._animate_slide_part, m_id, o_id, step + 5)
 
     def _animate_weather(self):
+        if getattr(self, 'current_frame', '') != "main":
+            self.root.after(50, self._animate_weather)
+            return
+
         if self.current_weather_type == "Rain":
             self.wx_canvas.delete("sun")
             if len(self.rain_particles) < 20:
@@ -574,7 +577,39 @@ class MatterDeskCore:
     # ==========================================
     # NETWORK MANIPULATION (WOL & LAN SCAN)
     # ==========================================
-def _trigger_wol(self):
+    def _build_wol_ui(self):
+        f = tk.Frame(self.root, bg="#000000")
+        f.place(x=0, y=0, relwidth=1, relheight=1)
+        self.frames["wol"] = f
+        self.wol_canvas = tk.Canvas(f, width=800, height=480, bg="#050505", highlightthickness=0)
+        self.wol_canvas.pack(fill="both", expand=True)
+
+        try:
+            self.wol_canvas.create_text(400, 150, text="WAKING WORKSTATION", font=font.Font(family="Horizon", size=24, weight="bold"), fill="#1db954")
+        except:
+            self.wol_canvas.create_text(400, 150, text="WAKING WORKSTATION", font=font.Font(family="Helvetica", size=24, weight="bold"), fill="#1db954")
+
+        self.wol_canvas.create_text(400, 200, text="TARGET IP: 192.168.1.141", font=font.Font(family="Courier", size=14), fill="#aaaaaa")
+        self.wol_canvas.create_text(400, 230, text="TARGET MAC: EC:75:0C:8E:E2:1C", font=font.Font(family="Courier", size=14), fill="#aaaaaa")
+
+        self.pulse_rings = []
+        for i in range(3):
+            ring = self.wol_canvas.create_oval(400, 350, 400, 350, outline="#1db954", width=2)
+            self.pulse_rings.append({"id": ring, "radius": i * 40})
+
+    def _animate_wol(self):
+        if getattr(self, 'current_frame', '') != "wol": return
+
+        for p in self.pulse_rings:
+            p["radius"] += 2
+            if p["radius"] > 150:
+                p["radius"] = 0
+            r = p["radius"]
+            self.wol_canvas.coords(p["id"], 400-r, 350-r, 400+r, 350+r)
+
+        self.root.after(30, self._animate_wol)
+
+    def _trigger_wol(self):
         self.log("Sending Wake-on-LAN Magic Packet to 192.168.1.141")
         try:
             mac = "ec:75:0c:8e:e2:1c"
@@ -582,11 +617,17 @@ def _trigger_wol(self):
             magic_packet = b'\xff' * 6 + mac_bytes * 16
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-                # FORCE ROUTING TO YOUR SPECIFIC SUBNET
+                # Forced subnet broadcast to bypass Linux routing quirks
                 s.sendto(magic_packet, ('192.168.1.255', 9))
-                # Optional fallback: send directly to the IP as well
                 s.sendto(magic_packet, ('192.168.1.141', 9))
-            TouchModal(self.root, "Network Command", ["Magic Packet Dispatched", "Target: ec:75:0c:8e:e2:1c"], lambda x: None)
+            
+            for i, p in enumerate(self.pulse_rings):
+                p["radius"] = i * 40
+                
+            self.nav_to("wol")
+            self._animate_wol()
+            self.root.after(3500, lambda: self.nav_to("main"))
+            
         except Exception as e:
             self.log(f"WOL Error: {e}")
             TouchModal(self.root, "Network Error", [str(e)], lambda x: None)
@@ -728,7 +769,6 @@ def _trigger_wol(self):
         self.heatmap_canvas = tk.Canvas(tsk, height=120, bg="#121212", highlightthickness=0)
         self.heatmap_canvas.pack(fill="x", padx=10, pady=10)
         
-        # New Detailed Session Log Section
         self.history_list_canvas = tk.Canvas(tsk, bg="#121212", highlightthickness=0, height=80)
         self.history_list_canvas.pack(fill="x", padx=10, pady=(0, 10))
 
@@ -841,7 +881,6 @@ def _trigger_wol(self):
             daily_totals = {}
             recent_logs = []
             
-            # Sort sessions by timestamp to extract recent history and build heatmap
             sorted_keys = sorted(sessions.keys(), key=lambda k: sessions[k].get('timestamp', 0))
             
             for k in sorted_keys:
@@ -850,7 +889,6 @@ def _trigger_wol(self):
                 date_str = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d')
                 daily_totals[date_str] = daily_totals.get(date_str, 0) + data.get('duration_seconds', 0)
                 
-                # Append to recent logs
                 dur_m = data.get('duration_seconds', 0) // 60
                 subj = data.get('subject', 'Unknown')
                 log_time = datetime.datetime.fromtimestamp(ts).strftime('%b %d')
@@ -883,7 +921,6 @@ def _trigger_wol(self):
                 y1 = start_y + (r * (box_size + padding))
                 self.heatmap_canvas.create_rectangle(x1, y1, x1+box_size, y1+box_size, fill=col, outline="")
 
-        # Draw Detailed Text Logs Below Heatmap
         self.history_list_canvas.delete("all")
         y_pos = 10
         for log in reversed(recent_logs):
