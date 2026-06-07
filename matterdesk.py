@@ -22,6 +22,7 @@ import math
 BACKLIGHT_POWER = '/sys/class/backlight/10-0045/bl_power'
 BACKLIGHT_BRIGHT = '/sys/class/backlight/10-0045/brightness'
 TOUCH_DEVICE = '/dev/input/event4'
+CARPLAY_DIR = '/home/st6b/matterdesk/carplay-engine'
 BOOTLOADER_IMG = '/home/st6b/matterdesk/images/bootloader.png'
 LOGO_IMG_PATH = '/home/st6b/matterdesk/images/logo.png'
 FIREBASE_KEY_PATH = '/home/st6b/matterdesk/serviceAccountKey.json'
@@ -73,7 +74,7 @@ class TouchModal(tk.Toplevel):
 class MatterDeskCore:
     def __init__(self):
         self.system_logs = []
-        self.log("System Initializing - MatterDesk v4.0 (Kinetic Engine)")
+        self.log("System Initializing - MatterDesk v4.1 (Kinetic UI Engine)")
         
         self.root = tk.Tk()
         self.root.overrideredirect(True)
@@ -102,6 +103,7 @@ class MatterDeskCore:
         self._build_standby_ui()
         self._build_main_menu()
         self._build_network_ui()
+        self._build_bookmarks_ui()
         self._build_spotify_ui()
         self._build_study_ui()
         self._build_settings_ui()
@@ -123,8 +125,9 @@ class MatterDeskCore:
         if getattr(self, 'firebase_active', False):
             threading.Thread(target=self._battery_telemetry_loop, daemon=True).start()
             
-        self.last_clock_str = ""
+        self.last_h = self.last_m = self.last_s = ""
         self._clock_tick()
+        self._animate_abs_screensaver()
         self.log("Boot Sequence Complete.")
 
     def log(self, message):
@@ -141,6 +144,7 @@ class MatterDeskCore:
 
     def nav_to(self, frame_name):
         self.frames[frame_name].tkraise()
+        self.current_frame = frame_name
         
         if frame_name in ["boot", "ota", "standby", "study_absolute"]:
             self.frames["telemetry_bar"].place_forget()
@@ -270,7 +274,7 @@ class MatterDeskCore:
         while True:
             try:
                 # Wakelock Logic Override
-                if not self.is_asleep and not self.prevent_sleep and (time.time() - self.last_interaction > self.idle_timeout):
+                if not self.is_asleep and not getattr(self, 'prevent_sleep', False) and (time.time() - self.last_interaction > self.idle_timeout):
                     self.root.after(0, self.sleep_display)
 
                 cpu = psutil.cpu_percent()
@@ -326,7 +330,7 @@ class MatterDeskCore:
         self.nav_to("main")
 
     # ==========================================
-    # MAIN MENU (BENTO GRID v4.0)
+    # MAIN MENU (BENTO GRID v4.1)
     # ==========================================
     def _build_main_menu(self):
         f = tk.Frame(self.root)
@@ -341,12 +345,23 @@ class MatterDeskCore:
         self._create_round_rect(self.home_canvas, 20, 20, 320, 220, radius=25, fill="#121212", stipple="gray50")
         self.home_canvas.create_text(40, 50, text="DRAFTSMAN", font=font.Font(family="Horizon", size=14, weight="bold"), fill="#1db954", anchor="w")
         
-        # Clock Canvas (Isolated for sliding animations)
+        # Segmented Canvas Clock
         self.clock_f = tk.Canvas(self.home_canvas, width=280, height=60, bg="#121212", highlightthickness=0)
         self.clock_f.place(x=35, y=75)
-        self.clock_main_id = self.clock_f.create_text(0, 30, text="00:00:00", font=font.Font(family="Helvetica", size=48, weight="bold"), fill="#ffffff", anchor="w")
-        self.clock_ampm_id = self.clock_f.create_text(220, 40, text="AM", font=font.Font(family="Helvetica", size=18, weight="bold"), fill="#1db954", anchor="w")
-        self.clock_old_id = self.clock_f.create_text(0, -50, text="", font=font.Font(family="Helvetica", size=48, weight="bold"), fill="#ffffff", anchor="w")
+        
+        c_fnt = font.Font(family="Helvetica", size=48, weight="bold")
+        self.c_h_m = self.clock_f.create_text(0, 30, text="00", font=c_fnt, fill="#ffffff", anchor="w")
+        self.c_h_o = self.clock_f.create_text(0, -30, text="", font=c_fnt, fill="#ffffff", anchor="w")
+        self.clock_f.create_text(65, 27, text=":", font=c_fnt, fill="#777777", anchor="w")
+        
+        self.c_m_m = self.clock_f.create_text(85, 30, text="00", font=c_fnt, fill="#ffffff", anchor="w")
+        self.c_m_o = self.clock_f.create_text(85, -30, text="", font=c_fnt, fill="#ffffff", anchor="w")
+        self.clock_f.create_text(150, 27, text=":", font=c_fnt, fill="#777777", anchor="w")
+        
+        self.c_s_m = self.clock_f.create_text(170, 30, text="00", font=c_fnt, fill="#ffffff", anchor="w")
+        self.c_s_o = self.clock_f.create_text(170, -30, text="", font=c_fnt, fill="#ffffff", anchor="w")
+        
+        self.c_ap = self.clock_f.create_text(245, 38, text="AM", font=font.Font(family="Helvetica", size=16, weight="bold"), fill="#1db954", anchor="w")
 
         self.greet_id = self.home_canvas.create_text(40, 160, text="Loading...", font=font.Font(family="Helvetica", size=14), fill="#aaaaaa", anchor="w")
         self.home_canvas.create_text(40, 185, text="Parth Chhabra", font=font.Font(family="Helvetica", size=16, weight="bold"), fill="#ffffff", anchor="w")
@@ -379,7 +394,7 @@ class MatterDeskCore:
             text_id = self.home_canvas.create_text(750, y_offset, text="--%", font=font.Font(family="Helvetica", size=12), fill="#aaa", anchor="e")
             self.batt_ui[dev.lower()] = {"bar": bar_id, "text": text_id}
 
-        # 4. App Matrix (7 Apps, Refactored Layout)
+        # 4. App Matrix (8 Apps, 4x2 Layout)
         apps = [
             ("AirPlay", "#1a1a1a", "#fff", self.launch_uxplay),
             ("Spotify", "#0a2a10", "#1db954", lambda: self.nav_to("spotify")),
@@ -387,7 +402,8 @@ class MatterDeskCore:
             ("Wake PC", "#1a2a4a", "#88aaff", self._trigger_wol),
             ("Net Mon", "#2a1a3a", "#aa88ff", lambda: self._trigger_netscan()),
             ("Settings", "#222222", "#ddd", lambda: self.nav_to("settings")),
-            ("Power", "#2a0000", "#ff4444", self._show_power_menu)
+            ("Power", "#2a0000", "#ff4444", self._show_power_menu),
+            ("Bookmarks", "#3a1a1a", "#ff88aa", lambda: self.nav_to("bookmarks"))
         ]
         
         self.app_hitboxes = []
@@ -415,37 +431,40 @@ class MatterDeskCore:
     # --- Active Telemetry & Animations ---
     def _clock_tick(self):
         now = datetime.datetime.now()
-        t_str = now.strftime("%I:%M:%S")
-        if t_str.startswith("0"): t_str = t_str[1:]
-        ampm = now.strftime("%p")
+        h = now.strftime("%I")
+        m = now.strftime("%M")
+        s = now.strftime("%S")
+        ap = now.strftime("%p")
         
-        if self.last_clock_str != t_str:
-            self._slide_clock(t_str, ampm)
-            self.last_clock_str = t_str
+        if self.last_h != h: self._slide_part('h', self.c_h_m, self.c_h_o, self.last_h, h)
+        if self.last_m != m: self._slide_part('m', self.c_m_m, self.c_m_o, self.last_m, m)
+        if self.last_s != s: self._slide_part('s', self.c_s_m, self.c_s_o, self.last_s, s)
+        
+        self.clock_f.itemconfig(self.c_ap, text=ap)
+        self.last_h, self.last_m, self.last_s = h, m, s
             
-        h = now.hour
-        if h < 12: greet = "Good morning,"
-        elif h < 17: greet = "Good afternoon,"
+        hr24 = now.hour
+        if hr24 < 12: greet = "Good morning,"
+        elif hr24 < 17: greet = "Good afternoon,"
         else: greet = "Good evening,"
         
         self.home_canvas.itemconfig(self.greet_id, text=greet)
         self.root.after(1000, self._clock_tick)
 
-    def _slide_clock(self, new_t, ampm):
-        self.clock_f.itemconfig(self.clock_old_id, text=self.last_clock_str)
-        self.clock_f.coords(self.clock_old_id, 0, 30)
-        self.clock_f.itemconfig(self.clock_main_id, text=new_t)
-        self.clock_f.coords(self.clock_main_id, 0, 80)
-        self.clock_f.itemconfig(self.clock_ampm_id, text=ampm)
-        self._animate_slide(0)
-
-    def _animate_slide(self, step):
-        if step > 50:
-            self.clock_f.coords(self.clock_main_id, 0, 30)
-            return
-        self.clock_f.move(self.clock_old_id, 0, -5)
-        self.clock_f.move(self.clock_main_id, 0, -5)
-        self.root.after(10, self._animate_slide, step + 5)
+    def _slide_part(self, p_type, m_id, o_id, old_val, new_val):
+        self.clock_f.itemconfig(o_id, text=old_val)
+        self.clock_f.itemconfig(m_id, text=new_val)
+        
+        x_coord = 0 if p_type == 'h' else (85 if p_type == 'm' else 170)
+        self.clock_f.coords(o_id, x_coord, 30)
+        self.clock_f.coords(m_id, x_coord, 80)
+        self._animate_slide_part(m_id, o_id, 0)
+        
+    def _animate_slide_part(self, m_id, o_id, step):
+        if step > 50: return
+        self.clock_f.move(o_id, 0, -5)
+        self.clock_f.move(m_id, 0, -5)
+        self.root.after(10, self._animate_slide_part, m_id, o_id, step + 5)
 
     def _animate_weather(self):
         if self.current_weather_type == "Rain":
@@ -534,6 +553,23 @@ class MatterDeskCore:
         self.lbl_waiting = tk.Label(f_wait, text="Waiting...", font=self.font_header, fg="#ffffff", bg="#050505")
         self.lbl_waiting.pack(pady=(150, 20))
         tk.Button(f_wait, text="Cancel", font=self.font_sub, bg="#1a1a1a", fg="#ff4444", bd=0, command=self.wake_display).pack(ipadx=20, ipady=10)
+
+    # ==========================================
+    # BOOKMARKS PLATFORM
+    # ==========================================
+    def _build_bookmarks_ui(self):
+        f = tk.Frame(self.root, bg="#121212")
+        f.place(x=0, y=0, relwidth=1, relheight=1)
+        self.frames["bookmarks"] = f
+        
+        top = tk.Frame(f, bg="#121212", height=40)
+        top.pack(fill="x", padx=10, pady=10)
+        tk.Button(top, text="< BACK", font=self.font_body, bg="#121212", fg="#fff", bd=0, command=lambda: self.nav_to("main")).pack(side="left")
+        tk.Label(top, text="CROSS-DEVICE BOOKMARKS", font=self.font_sub, fg="#ff88aa", bg="#121212").pack(side="right", padx=20)
+        
+        self.bm_canvas = tk.Canvas(f, bg="#050505", highlightthickness=0)
+        self.bm_canvas.pack(fill="both", expand=True, padx=20, pady=10)
+        self.bm_canvas.create_text(380, 180, text="Awaiting Desktop Client Integration...", fill="#666666", font=self.font_body, justify="center")
 
     # ==========================================
     # NETWORK MANIPULATION (WOL & LAN SCAN)
@@ -632,7 +668,7 @@ class MatterDeskCore:
         self.root.after(50, self._animate_screensaver)
 
     # ==========================================
-    # STUDY ENGINE (ABSOLUTE MODE)
+    # STUDY ENGINE (ABSOLUTE MODE & LOGS)
     # ==========================================
     def _init_firebase(self):
         self.study_active = False
@@ -688,20 +724,35 @@ class MatterDeskCore:
         
         self.heatmap_canvas = tk.Canvas(tsk, height=120, bg="#121212", highlightthickness=0)
         self.heatmap_canvas.pack(fill="x", padx=10, pady=10)
-        self.task_list_canvas = tk.Canvas(tsk, bg="#121212", highlightthickness=0)
-        self.task_list_canvas.pack(fill="both", expand=True, padx=10, pady=10)
         
-        if getattr(self, 'firebase_active', False): threading.Thread(target=self._poll_tasks, daemon=True).start()
-        else: tk.Label(self.task_list_canvas, text="Firebase Offline.", fg="#ff4444", bg="#121212").pack()
+        # New Detailed Session Log Section
+        self.history_list_canvas = tk.Canvas(tsk, bg="#121212", highlightthickness=0, height=80)
+        self.history_list_canvas.pack(fill="x", padx=10, pady=(0, 10))
+
         self._draw_visceral_ring(360, "#333333")
 
         # ABSOLUTE MODE UI
         f_abs = tk.Frame(self.root, bg="#000000")
         f_abs.place(x=0, y=0, relwidth=1, relheight=1)
         self.frames["study_absolute"] = f_abs
-        self.lbl_abs_timer = tk.Label(f_abs, text="00:00:00", font=font.Font(family="Helvetica", size=120, weight="bold"), fg="#1db954", bg="#000000")
-        self.lbl_abs_timer.place(relx=0.5, rely=0.5, anchor="center")
-        f_abs.bind("<Button-1>", lambda e: self.nav_to("study"))
+        
+        self.abs_canvas = tk.Canvas(f_abs, bg="#000000", highlightthickness=0)
+        self.abs_canvas.pack(fill="both", expand=True)
+        self.abs_text = self.abs_canvas.create_text(400, 240, text="00:00:00", font=font.Font(family="Helvetica", size=120, weight="bold"), fill="#1db954")
+        self.abs_canvas.bind("<Button-1>", lambda e: self.nav_to("study"))
+        self.abs_x, self.abs_y = 400, 240
+        self.abs_dx, self.abs_dy = 1.5, 1.5
+
+    def _animate_abs_screensaver(self):
+        if getattr(self, 'current_frame', '') == "study_absolute":
+            self.abs_x += self.abs_dx
+            self.abs_y += self.abs_dy
+            
+            if self.abs_x > 600 or self.abs_x < 200: self.abs_dx *= -1
+            if self.abs_y > 350 or self.abs_y < 100: self.abs_dy *= -1
+            
+            self.abs_canvas.coords(self.abs_text, self.abs_x, self.abs_y)
+        self.root.after(50, self._animate_abs_screensaver)
 
     def _draw_visceral_ring(self, extent, color):
         self.ring_canvas.delete("ring")
@@ -734,6 +785,7 @@ class MatterDeskCore:
             self.study_seconds = 0
             self.total_target_seconds = 0
             self.lbl_timer.config(text="00:00:00")
+            self.abs_canvas.itemconfig(self.abs_text, text="00:00:00")
             self.lbl_target.config(text="Target: None")
             self._draw_visceral_ring(360, "#333")
         else:
@@ -745,8 +797,12 @@ class MatterDeskCore:
             self.prevent_sleep = True
             self.log(f"Sprint Started: {self.current_subject.get()} for {self.total_target_seconds}s")
             self.btn_toggle_timer.config(text="END SPRINT", bg="#ff4444")
-            self.nav_to("study_absolute")
+            self.root.after(10000, self._check_and_enter_absolute)
             self._tick_timer()
+
+    def _check_and_enter_absolute(self):
+        if self.study_active and self.current_frame == "study":
+            self.nav_to("study_absolute")
 
     def _tick_timer(self):
         if not getattr(self, 'study_active', False): return
@@ -756,7 +812,7 @@ class MatterDeskCore:
         time_str = f"{h:02d}:{m:02d}:{s:02d}"
         
         self.lbl_timer.config(text=time_str)
-        self.lbl_abs_timer.config(text=time_str)
+        self.abs_canvas.itemconfig(self.abs_text, text=time_str)
         
         ratio = remaining / self.total_target_seconds if self.total_target_seconds else 0
         extent = ratio * 360
@@ -780,14 +836,27 @@ class MatterDeskCore:
         try:
             sessions = db.reference('sessions').get() or {}
             daily_totals = {}
-            for k, data in sessions.items():
+            recent_logs = []
+            
+            # Sort sessions by timestamp to extract recent history and build heatmap
+            sorted_keys = sorted(sessions.keys(), key=lambda k: sessions[k].get('timestamp', 0))
+            
+            for k in sorted_keys:
+                data = sessions[k]
                 ts = data.get('timestamp', 0)
                 date_str = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d')
                 daily_totals[date_str] = daily_totals.get(date_str, 0) + data.get('duration_seconds', 0)
-            self.root.after(0, lambda: self._draw_heatmap(daily_totals))
+                
+                # Append to recent logs
+                dur_m = data.get('duration_seconds', 0) // 60
+                subj = data.get('subject', 'Unknown')
+                log_time = datetime.datetime.fromtimestamp(ts).strftime('%b %d')
+                recent_logs.append(f"{log_time} | {subj} ({dur_m}m)")
+            
+            self.root.after(0, lambda dt=daily_totals, rl=recent_logs[-3:]: self._draw_heatmap(dt, rl))
         except Exception as e: self.log(f"Heatmap Render Error: {e}")
 
-    def _draw_heatmap(self, daily_totals):
+    def _draw_heatmap(self, daily_totals, recent_logs):
         self.heatmap_canvas.delete("all")
         box_size = 12
         padding = 3
@@ -811,33 +880,12 @@ class MatterDeskCore:
                 y1 = start_y + (r * (box_size + padding))
                 self.heatmap_canvas.create_rectangle(x1, y1, x1+box_size, y1+box_size, fill=col, outline="")
 
-    def _poll_tasks(self):
-        while True:
-            if getattr(self, 'firebase_active', False):
-                try:
-                    raw = db.reference('tasks').order_by_child('completed').equal_to(False).get()
-                    self.root.after(0, lambda: self._render_tasks(raw))
-                except Exception: pass
-            time.sleep(5)
-
-    def _render_tasks(self, tasks_dict):
-        self.task_list_canvas.delete("all")
-        if not tasks_dict:
-            self.task_list_canvas.create_text(10, 10, text="Pipeline Clear.", fill="#666", anchor="w", font=self.font_body)
-            return
-        y = 0
-        for t_id, t_data in tasks_dict.items():
-            subj = t_data.get('subject', 'N/A')
-            title = t_data.get('title', 'Task')
-            f = tk.Frame(self.task_list_canvas, bg="#222")
-            f.place(x=0, y=y, relwidth=1, height=40)
-            tk.Label(f, text=subj, font=font.Font(weight="bold"), fg="#1db954", bg="#222", width=8).pack(side="left", padx=10)
-            tk.Label(f, text=title[:30], fg="#fff", bg="#222").pack(side="left", pady=10)
-            tk.Button(f, text="DONE", bg="#333", fg="#fff", bd=0, command=lambda k=t_id: self._complete_task(k)).pack(side="right", padx=10, pady=5)
-            y += 45
-
-    def _complete_task(self, task_id):
-        if getattr(self, 'firebase_active', False): threading.Thread(target=lambda: db.reference(f'tasks/{task_id}').update({'completed': True}), daemon=True).start()
+        # Draw Detailed Text Logs Below Heatmap
+        self.history_list_canvas.delete("all")
+        y_pos = 10
+        for log in reversed(recent_logs):
+            self.history_list_canvas.create_text(10, y_pos, text=log, fill="#888888", font=self.font_body, anchor="w")
+            y_pos += 25
 
     def _trigger_analytics(self):
         self.nav_to("waiting")
