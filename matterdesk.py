@@ -574,7 +574,7 @@ class MatterDeskCore:
     # ==========================================
     # NETWORK MANIPULATION (WOL & LAN SCAN)
     # ==========================================
-    def _trigger_wol(self):
+def _trigger_wol(self):
         self.log("Sending Wake-on-LAN Magic Packet to 192.168.1.141")
         try:
             mac = "ec:75:0c:8e:e2:1c"
@@ -582,7 +582,10 @@ class MatterDeskCore:
             magic_packet = b'\xff' * 6 + mac_bytes * 16
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-                s.sendto(magic_packet, ('255.255.255.255', 9))
+                # FORCE ROUTING TO YOUR SPECIFIC SUBNET
+                s.sendto(magic_packet, ('192.168.1.255', 9))
+                # Optional fallback: send directly to the IP as well
+                s.sendto(magic_packet, ('192.168.1.141', 9))
             TouchModal(self.root, "Network Command", ["Magic Packet Dispatched", "Target: ec:75:0c:8e:e2:1c"], lambda x: None)
         except Exception as e:
             self.log(f"WOL Error: {e}")
