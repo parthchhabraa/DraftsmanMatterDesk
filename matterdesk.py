@@ -25,6 +25,7 @@ TOUCH_DEVICE = '/dev/input/event4'
 LOGO_IMG_PATH = '/home/st6b/matterdesk/images/logo.png'
 FIREBASE_KEY_PATH = '/home/st6b/matterdesk/serviceAccountKey.json'
 GITHUB_REPO_URL = 'https://github.com/parthchhabraa/DraftsmanMatterDesk.git'
+NODE_PATH = 'telemetry/bookmarks/macbook'
 
 # --- API Context ---
 SPOTIFY_CLIENT_ID = '515b520ddd7b4ed2a33fdd1091c9ef00'
@@ -599,13 +600,11 @@ class MatterDeskCore:
         self.bm_canvas.create_text(20, 20, text=f"Querying nodes for {device}...", fill="#888", font=self.font_body, anchor="w")
         threading.Thread(target=self._fetch_bookmarks_worker, args=(device,), daemon=True).start()
 
-    def _fetch_bookmarks_worker(self, device):
-        try:
-            links = db.reference(f'telemetry/bookmarks/{device.lower()}').get() or []
-            self.root.after(0, lambda: self._render_bookmarks(links))
-        except Exception as e:
-            self.root.after(0, lambda: self.bm_canvas.create_text(20, 50, text=f"Fetch Error: {e}", fill="#ff4444", font=self.font_body, anchor="w"))
-
+   def _fetch_bookmarks_worker(self, device):
+    try:
+        links = db.reference(f'telemetry/bookmarks/{device.lower()}').get() or []
+        self.root.after(0, lambda: self._render_bookmarks(links))
+        
     def _render_bookmarks(self, links):
         self.bm_canvas.delete("all")
         if not links:
