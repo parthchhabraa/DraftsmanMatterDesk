@@ -72,7 +72,7 @@ class TouchModal(tk.Toplevel):
 class MatterDeskCore:
     def __init__(self):
         self.system_logs = []
-        self.log("System Initializing - MatterDesk v4.3 (Dynamic Revision)")
+        self.log("System Initializing - MatterDesk v4.4 (Telemetry Override)")
         
         self.root = tk.Tk()
         self.root.overrideredirect(True)
@@ -265,29 +265,39 @@ class MatterDeskCore:
     def _hardware_telemetry_loop(self):
         while True:
             try:
-                if not self.is_asleep and not getattr(self, 'prevent_sleep', False) and (time.time() - self.last_interaction > self.idle_timeout):
-                    self.root.after(0, self.sleep_display)
+                # Absolute sleep/wakelock engine evaluation
+                time_since_interaction = time.time() - self.last_interaction
+                remaining_idle = max(0, self.idle_timeout - time_since_interaction)
+                
+                # Render down progress bar visual data matching layout mechanics
+                if not self.is_asleep and not getattr(self, 'prevent_sleep', False):
+                    target_time = datetime.datetime.now() + datetime.timedelta(seconds=remaining_idle)
+                    sleep_str = f"Sleep until: {target_time.strftime('%I:%M:%S %p')}"
+                    if remaining_idle <= 0:
+                        self.root.after(0, self.sleep_display)
+                else:
+                    sleep_str = "Wakelock Active" if getattr(self, 'prevent_sleep', False) else "Display Standby"
+                
                 cpu = psutil.cpu_percent()
                 ram = psutil.virtual_memory().percent
-                up_sec = time.time() - psutil.boot_time()
-                d = int(up_sec // 86400)
-                h = int((up_sec % 86400) // 3600)
-                m = int((up_sec % 3600) // 60)
-                up_str = f"UP: {d}d {h}h" if d > 0 else f"UP: {h}h {m}m"
+                
                 temp_c = 0.0
                 try:
                     with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f: temp_c = float(f.read()) / 1000.0
                 except: pass
+                
                 cpu_col = "#ff4444" if cpu > 85 else "#888"
                 ram_col = "#ff4444" if ram > 85 else "#888"
                 tmp_col = "#ff4444" if temp_c > 75 else ("#ffaa00" if temp_c > 65 else "#888")
-                self.root.after(0, lambda c=cpu, r=ram, t=temp_c, u=up_str, cc=cpu_col, rc=ram_col, tc=tmp_col: self._update_telemetry(c, r, t, u, cc, rc, tc))
+
+                self.root.after(0, lambda c=cpu, r=ram, t=temp_c, u=sleep_str, cc=cpu_col, rc=ram_col, tc=tmp_col: self._update_telemetry(c, r, t, u, cc, rc, tc))
+
                 if temp_c >= 82.0 and not self.thermal_panic:
                     self.thermal_panic = True
                     self.panic_countdown = 60
                     self.root.after(0, self._trigger_panic)
             except Exception: pass
-            time.sleep(2)
+            time.sleep(1) # Frequency scaled up to 1Hz matching clock string alignment
 
     def _update_telemetry(self, c, r, t, u, cc, rc, tc):
         self.lbl_hw_cpu.config(text=f"CPU: {c}%", fg=cc)
@@ -315,7 +325,7 @@ class MatterDeskCore:
         self.nav_to("main")
 
     # ==========================================
-    # MAIN MENU (BENTO GRID REFACTOR v4.3)
+    # MAIN MENU (BENTO GRID REFACTOR v4.4)
     # ==========================================
     def _build_main_menu(self):
         f = tk.Frame(self.root)
@@ -358,7 +368,7 @@ class MatterDeskCore:
         self.current_weather_type = "Clear"
         self._animate_weather()
 
-        # Dynamic Brackets Battery UI Setup
+        # Dynamic Interval Bracket Architecture Setup
         self._create_round_rect(self.home_canvas, 340, 20, 780, 200, radius=25, fill="#121212", stipple="gray50")
         self.batt_ui = {}
         devices = ["iPhone", "MacBook", "iPad"]
@@ -370,7 +380,6 @@ class MatterDeskCore:
             text_id = self.home_canvas.create_text(750, y_offset, text="--%", font=font.Font(family="Helvetica", size=12), fill="#aaa", anchor="e")
             self.batt_ui[dev.lower()] = {"bar": bar_id, "text": text_id}
 
-        # App Matrix Array (Refactored 7-App Configuration)
         apps = [
             ("AirPlay", "#1a1a1a", "#fff", self.launch_uxplay),
             ("Spotify", "#0a2a10", "#1db954", lambda: self.nav_to("spotify")),
@@ -508,21 +517,41 @@ class MatterDeskCore:
         for ui_key, db_key in keys_map.items():
             val = data.get(db_key)
             if val is not None:
-                width = int((val / 100.0) * 240)
-                self.home_canvas.coords(self.batt_ui[ui_key]["bar"], 480, self.home_canvas.coords(self.batt_ui[ui_key]["bar"])[1], 480 + width, self.home_canvas.coords(self.batt_ui[ui_key]["bar"])[3])
-                
-                # Dynamic Bracket Evaluation
                 lower = (val // 10) * 10
-                upper = lower + 9
+                upper = lower + 9 if lower < 100 else 100
+                midpoint = lower + 5 if lower < 100 else 100
                 
-                # Dynamic Color Evaluation Matrix
-                if val >= 70: col = "#1db954"
-                elif val >= 30: col = "#88aaff"
-                else: col = "#ff4444"
+                base_x = 480
+                max_width = 240
+                
+                width = int((val / 100.0) * max_width)
+                self.home_canvas.coords(self.batt_ui[ui_key]["bar"], base_x, self.home_canvas.coords(self.batt_ui[ui_key]["bar"])[1], base_x + width, self.home_canvas.coords(self.batt_ui[ui_key]["bar"])[3])
+                
+                if val >= 70:
+                    col = "#1db954"       
+                    range_col = "#0e4419" 
+                elif val >= 30:
+                    col = "#88aaff"       
+                    range_col = "#223355" 
+                else:
+                    col = "#ff4444"       
+                    range_col = "#4a1111" 
                 
                 self.home_canvas.itemconfig(self.batt_ui[ui_key]["bar"], fill=col)
-                if val == 100: self.home_canvas.itemconfig(self.batt_ui[ui_key]["text"], text="100%")
-                else: self.home_canvas.itemconfig(self.batt_ui[ui_key]["text"], text=f"{lower}% - {upper}%")
+                
+                range_tag = f"range_{ui_key}"
+                self.home_canvas.delete(range_tag)
+                
+                if val < 100:
+                    r_start_x = base_x + int((lower / 100.0) * max_width)
+                    r_end_x = base_x + int((upper / 100.0) * max_width)
+                    y_coords = self.home_canvas.coords(self.batt_ui[ui_key]["bar"])
+                    
+                    range_bar_id = self.home_canvas.create_rectangle(r_start_x, y_coords[1], r_end_x, y_coords[3], fill=range_col, outline="", tags=range_tag)
+                    self.home_canvas.tag_lower(range_bar_id, self.batt_ui[ui_key]["bar"])
+                
+                display_str = f"~{midpoint}%" if val < 100 else "100%"
+                self.home_canvas.itemconfig(self.batt_ui[ui_key]["text"], text=display_str)
 
     def _build_system_ui(self):
         f_pill = tk.Frame(self.root, bg="#2a0000")
@@ -550,7 +579,6 @@ class MatterDeskCore:
         tk.Button(top, text="< BACK", font=self.font_body, bg="#121212", fg="#fff", bd=0, command=lambda: self.nav_to("main")).pack(side="left")
         tk.Label(top, text="CROSS-DEVICE BOOKMARKS", font=self.font_sub, fg="#ff88aa", bg="#121212").pack(side="right", padx=20)
         
-        # Cross-Device Toggle Hub Row
         nav_row = tk.Frame(f, bg="#121212")
         nav_row.pack(fill="x", padx=20, pady=5)
         devices = ["MacBook", "Workstation", "Server"]
