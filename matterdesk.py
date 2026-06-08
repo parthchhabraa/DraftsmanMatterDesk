@@ -25,7 +25,6 @@ TOUCH_DEVICE = '/dev/input/event4'
 LOGO_IMG_PATH = '/home/st6b/matterdesk/images/logo.png'
 FIREBASE_KEY_PATH = '/home/st6b/matterdesk/serviceAccountKey.json'
 GITHUB_REPO_URL = 'https://github.com/parthchhabraa/DraftsmanMatterDesk.git'
-NODE_PATH = 'telemetry/bookmarks/macbook'
 
 # --- API Context ---
 SPOTIFY_CLIENT_ID = '515b520ddd7b4ed2a33fdd1091c9ef00'
@@ -266,11 +265,9 @@ class MatterDeskCore:
     def _hardware_telemetry_loop(self):
         while True:
             try:
-                # Absolute sleep/wakelock engine evaluation
                 time_since_interaction = time.time() - self.last_interaction
                 remaining_idle = max(0, self.idle_timeout - time_since_interaction)
                 
-                # Render down progress bar visual data matching layout mechanics
                 if not self.is_asleep and not getattr(self, 'prevent_sleep', False):
                     target_time = datetime.datetime.now() + datetime.timedelta(seconds=remaining_idle)
                     sleep_str = f"Sleep until: {target_time.strftime('%I:%M:%S %p')}"
@@ -298,7 +295,7 @@ class MatterDeskCore:
                     self.panic_countdown = 60
                     self.root.after(0, self._trigger_panic)
             except Exception: pass
-            time.sleep(1) # Frequency scaled up to 1Hz matching clock string alignment
+            time.sleep(1)
 
     def _update_telemetry(self, c, r, t, u, cc, rc, tc):
         self.lbl_hw_cpu.config(text=f"CPU: {c}%", fg=cc)
@@ -600,11 +597,22 @@ class MatterDeskCore:
         self.bm_canvas.create_text(20, 20, text=f"Querying nodes for {device}...", fill="#888", font=self.font_body, anchor="w")
         threading.Thread(target=self._fetch_bookmarks_worker, args=(device,), daemon=True).start()
 
-   def _fetch_bookmarks_worker(self, device):
-    try:
-        links = db.reference(f'telemetry/bookmarks/{device.lower()}').get() or []
-        self.root.after(0, lambda: self._render_bookmarks(links))
-        
+    def _fetch_bookmarks_worker(self, device):
+        try:
+            node_target = f'telemetry/bookmarks/{device.lower()}'
+            raw_data = db.reference(node_target).get()
+            
+            if isinstance(raw_data, dict):
+                links = [raw_data[k] for k in sorted(raw_data.keys())]
+            elif isinstance(raw_data, list):
+                links = [item for item in raw_data if item is not None]
+            else:
+                links = []
+                
+            self.root.after(0, lambda: self._render_bookmarks(links))
+        except Exception as e:
+            self.root.after(0, lambda: self.bm_canvas.create_text(20, 50, text=f"Fetch Error: {e}", fill="#ff4444", font=self.font_body, anchor="w"))
+
     def _render_bookmarks(self, links):
         self.bm_canvas.delete("all")
         if not links:
@@ -613,10 +621,16 @@ class MatterDeskCore:
         
         y = 30
         for item in links:
+            if not isinstance(item, dict): 
+                continue
             title = item.get('title', 'Unknown Tab')
             url = item.get('url', '#')
-            self.bm_canvas.create_text(20, y, text=title[:40], fill="#ffffff", font=self.font_sub, anchor="w")
-            self.bm_canvas.create_text(320, y, text=url[:50], fill="#ff88aa", font=font.Font(family="Courier", size=11), anchor="w")
+            
+            clean_title = title[:45] + "..." if len(title) > 45 else title
+            clean_url = url[:55] + "..." if len(url) > 55 else url
+            
+            self.bm_canvas.create_text(20, y, text=clean_title, fill="#ffffff", font=self.font_sub, anchor="w")
+            self.bm_canvas.create_text(340, y, text=clean_url, fill="#ff88aa", font=font.Font(family="Courier", size=11), anchor="w")
             y += 35
 
     # ==========================================
