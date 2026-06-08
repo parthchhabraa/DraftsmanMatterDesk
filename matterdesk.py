@@ -22,8 +22,6 @@ import math
 BACKLIGHT_POWER = '/sys/class/backlight/10-0045/bl_power'
 BACKLIGHT_BRIGHT = '/sys/class/backlight/10-0045/brightness'
 TOUCH_DEVICE = '/dev/input/event4'
-CARPLAY_DIR = '/home/st6b/matterdesk/carplay-engine'
-BOOTLOADER_IMG = '/home/st6b/matterdesk/images/bootloader.png'
 LOGO_IMG_PATH = '/home/st6b/matterdesk/images/logo.png'
 FIREBASE_KEY_PATH = '/home/st6b/matterdesk/serviceAccountKey.json'
 GITHUB_REPO_URL = 'https://github.com/parthchhabraa/DraftsmanMatterDesk.git'
@@ -74,7 +72,7 @@ class TouchModal(tk.Toplevel):
 class MatterDeskCore:
     def __init__(self):
         self.system_logs = []
-        self.log("System Initializing - MatterDesk v4.2 (Kinetic UI Engine)")
+        self.log("System Initializing - MatterDesk v4.3 (Dynamic Revision)")
         
         self.root = tk.Tk()
         self.root.overrideredirect(True)
@@ -101,7 +99,6 @@ class MatterDeskCore:
         self._build_boot_ui()
         self._build_ota_ui()
         self._build_standby_ui()
-        self._build_wol_ui()
         self._build_main_menu()
         self._build_network_ui()
         self._build_bookmarks_ui()
@@ -147,7 +144,7 @@ class MatterDeskCore:
         self.frames[frame_name].tkraise()
         self.current_frame = frame_name
         
-        if frame_name in ["boot", "ota", "standby", "study_absolute", "wol"]:
+        if frame_name in ["boot", "ota", "standby", "study_absolute"]:
             self.frames["telemetry_bar"].place_forget()
         else:
             self.frames["telemetry_bar"].place(x=0, y=465, width=800, height=15)
@@ -192,13 +189,11 @@ class MatterDeskCore:
         self.frames["boot"] = f
         self.boot_canvas = tk.Canvas(f, width=800, height=480, bg="#000000", highlightthickness=0)
         self.boot_canvas.pack()
-        
         try:
             self.boot_logo_img = ImageTk.PhotoImage(Image.open(LOGO_IMG_PATH).resize((120, 120), Image.LANCZOS))
             self.boot_canvas.create_image(400, 200, image=self.boot_logo_img)
         except Exception:
-            self.boot_canvas.create_text(400, 200, text="D", font=font.Font(family="Horizon", size=80), fill="#ffffff")
-
+            self.boot_canvas.create_text(400, 200, text="D", font=font.Font(family="Helvetica", size=80, weight="bold"), fill="#ffffff")
         self.boot_canvas.create_rectangle(300, 320, 500, 324, fill="#333333", outline="")
         self.boot_bar = self.boot_canvas.create_rectangle(300, 320, 300, 324, fill="#ffffff", outline="")
 
@@ -206,7 +201,6 @@ class MatterDeskCore:
         if progress > 200:
             self.nav_to("main")
             return
-        
         self.boot_canvas.coords(self.boot_bar, 300, 320, 300 + progress, 324)
         step = 6 if progress < 120 else 3
         self.root.after(40, self._animate_boot_screen, progress + step)
@@ -217,13 +211,11 @@ class MatterDeskCore:
         self.frames["ota"] = f
         self.ota_canvas = tk.Canvas(f, width=800, height=480, bg="#000000", highlightthickness=0)
         self.ota_canvas.pack()
-        
         try:
             self.ota_logo_img = ImageTk.PhotoImage(Image.open(LOGO_IMG_PATH).resize((120, 120), Image.LANCZOS))
             self.ota_canvas.create_image(400, 200, image=self.ota_logo_img)
         except Exception:
-            self.ota_canvas.create_text(400, 200, text="D", font=font.Font(family="Horizon", size=80), fill="#ffffff")
-
+            self.ota_canvas.create_text(400, 200, text="D", font=font.Font(family="Helvetica", size=80, weight="bold"), fill="#ffffff")
         self.ota_canvas.create_rectangle(300, 320, 500, 324, fill="#333333", outline="")
         self.ota_bar = self.ota_canvas.create_rectangle(300, 320, 300, 324, fill="#ffffff", outline="")
         self.ota_text = self.ota_canvas.create_text(400, 350, text="Preparing Update...", font=font.Font(family="Helvetica", size=12), fill="#aaaaaa")
@@ -236,7 +228,6 @@ class MatterDeskCore:
         if getattr(self, 'ota_error', False):
             self.ota_canvas.itemconfig(self.ota_text, text="Verification Failed. Rebooting...", fill="#ff4444")
             return
-            
         if not hasattr(self, 'ota_progress'): self.ota_progress = 0
         if self.ota_progress < 180:
             self.ota_progress += 2
@@ -276,27 +267,21 @@ class MatterDeskCore:
             try:
                 if not self.is_asleep and not getattr(self, 'prevent_sleep', False) and (time.time() - self.last_interaction > self.idle_timeout):
                     self.root.after(0, self.sleep_display)
-
                 cpu = psutil.cpu_percent()
                 ram = psutil.virtual_memory().percent
-                
                 up_sec = time.time() - psutil.boot_time()
                 d = int(up_sec // 86400)
                 h = int((up_sec % 86400) // 3600)
                 m = int((up_sec % 3600) // 60)
                 up_str = f"UP: {d}d {h}h" if d > 0 else f"UP: {h}h {m}m"
-                
                 temp_c = 0.0
                 try:
                     with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f: temp_c = float(f.read()) / 1000.0
                 except: pass
-                
                 cpu_col = "#ff4444" if cpu > 85 else "#888"
                 ram_col = "#ff4444" if ram > 85 else "#888"
                 tmp_col = "#ff4444" if temp_c > 75 else ("#ffaa00" if temp_c > 65 else "#888")
-
                 self.root.after(0, lambda c=cpu, r=ram, t=temp_c, u=up_str, cc=cpu_col, rc=ram_col, tc=tmp_col: self._update_telemetry(c, r, t, u, cc, rc, tc))
-
                 if temp_c >= 82.0 and not self.thermal_panic:
                     self.thermal_panic = True
                     self.panic_countdown = 60
@@ -330,7 +315,7 @@ class MatterDeskCore:
         self.nav_to("main")
 
     # ==========================================
-    # MAIN MENU (BENTO GRID v4.1)
+    # MAIN MENU (BENTO GRID REFACTOR v4.3)
     # ==========================================
     def _build_main_menu(self):
         f = tk.Frame(self.root)
@@ -342,26 +327,19 @@ class MatterDeskCore:
         self.home_canvas.create_image(0, 0, image=self.bg_image, anchor="nw")
 
         self._create_round_rect(self.home_canvas, 20, 20, 320, 220, radius=25, fill="#121212", stipple="gray50")
-        try:
-            self.home_canvas.create_text(40, 50, text="DRAFTSMAN", font=font.Font(family="Horizon", size=14, weight="bold"), fill="#1db954", anchor="w")
-        except:
-            self.home_canvas.create_text(40, 50, text="DRAFTSMAN", font=font.Font(family="Helvetica", size=14, weight="bold"), fill="#1db954", anchor="w")
+        self.home_canvas.create_text(40, 50, text="DRAFTSMAN", font=font.Font(family="Helvetica", size=14, weight="bold"), fill="#1db954", anchor="w")
         
         self.clock_f = tk.Canvas(self.home_canvas, width=280, height=60, bg="#121212", highlightthickness=0)
         self.clock_f.place(x=35, y=75)
-        
         c_fnt = font.Font(family="Helvetica", size=48, weight="bold")
         self.c_h_m = self.clock_f.create_text(0, 30, text="00", font=c_fnt, fill="#ffffff", anchor="w")
         self.c_h_o = self.clock_f.create_text(0, -30, text="", font=c_fnt, fill="#ffffff", anchor="w")
         self.clock_f.create_text(65, 27, text=":", font=c_fnt, fill="#777777", anchor="w")
-        
         self.c_m_m = self.clock_f.create_text(85, 30, text="00", font=c_fnt, fill="#ffffff", anchor="w")
         self.c_m_o = self.clock_f.create_text(85, -30, text="", font=c_fnt, fill="#ffffff", anchor="w")
         self.clock_f.create_text(150, 27, text=":", font=c_fnt, fill="#777777", anchor="w")
-        
         self.c_s_m = self.clock_f.create_text(170, 30, text="00", font=c_fnt, fill="#ffffff", anchor="w")
         self.c_s_o = self.clock_f.create_text(170, -30, text="", font=c_fnt, fill="#ffffff", anchor="w")
-        
         self.c_ap = self.clock_f.create_text(245, 38, text="AM", font=font.Font(family="Helvetica", size=16, weight="bold"), fill="#1db954", anchor="w")
 
         self.greet_id = self.home_canvas.create_text(40, 160, text="Loading...", font=font.Font(family="Helvetica", size=14), fill="#aaaaaa", anchor="w")
@@ -370,7 +348,6 @@ class MatterDeskCore:
         self._create_round_rect(self.home_canvas, 20, 240, 320, 440, radius=25, fill="#121212", stipple="gray50")
         self.wx_canvas = tk.Canvas(self.home_canvas, width=280, height=180, bg="#121212", highlightthickness=0)
         self.wx_canvas.place(x=30, y=250)
-        
         self.weather_temp_id = self.wx_canvas.create_text(10, 40, text="--°C", font=font.Font(family="Helvetica", size=45, weight="bold"), fill="#ffffff", anchor="w")
         self.wx_canvas.create_text(10, 100, text="Udaipur, Rajasthan", font=font.Font(family="Helvetica", size=12, weight="bold"), fill="#1db954", anchor="w")
         self.weather_pop_id = self.wx_canvas.create_text(10, 140, text="Precipitation: --%", font=font.Font(family="Helvetica", size=12), fill="#aaaaaa", anchor="w")
@@ -381,27 +358,27 @@ class MatterDeskCore:
         self.current_weather_type = "Clear"
         self._animate_weather()
 
+        # Dynamic Brackets Battery UI Setup
         self._create_round_rect(self.home_canvas, 340, 20, 780, 200, radius=25, fill="#121212", stipple="gray50")
         self.batt_ui = {}
         devices = ["iPhone", "MacBook", "iPad"]
-        colors = ["#1db954", "#ffffff", "#88aaff"]
-        for i, (dev, col) in enumerate(zip(devices, colors)):
+        for i, dev in enumerate(devices):
             y_offset = 55 + (i * 45)
             self.home_canvas.create_text(370, y_offset, text=dev, font=font.Font(family="Helvetica", size=12, weight="bold"), fill="#fff", anchor="w")
             self.home_canvas.create_rectangle(480, y_offset-8, 720, y_offset+8, fill="#222222", outline="")
-            bar_id = self.home_canvas.create_rectangle(480, y_offset-8, 480, y_offset+8, fill=col, outline="")
+            bar_id = self.home_canvas.create_rectangle(480, y_offset-8, 480, y_offset+8, fill="#ffffff", outline="")
             text_id = self.home_canvas.create_text(750, y_offset, text="--%", font=font.Font(family="Helvetica", size=12), fill="#aaa", anchor="e")
             self.batt_ui[dev.lower()] = {"bar": bar_id, "text": text_id}
 
+        # App Matrix Array (Refactored 7-App Configuration)
         apps = [
             ("AirPlay", "#1a1a1a", "#fff", self.launch_uxplay),
             ("Spotify", "#0a2a10", "#1db954", lambda: self.nav_to("spotify")),
             ("Study", "#12123a", "#88aaff", lambda: self.nav_to("study")),
-            ("Wake PC", "#1a2a4a", "#88aaff", self._trigger_wol),
-            ("Net Mon", "#2a1a3a", "#aa88ff", lambda: self._trigger_netscan()),
+            ("Network", "#2a1a3a", "#aa88ff", lambda: self._trigger_netscan()),
+            ("Bookmarks", "#3a1a1a", "#ff88aa", lambda: self.nav_to("bookmarks")),
             ("Settings", "#222222", "#ddd", lambda: self.nav_to("settings")),
-            ("Power", "#2a0000", "#ff4444", self._show_power_menu),
-            ("Bookmarks", "#3a1a1a", "#ff88aa", lambda: self.nav_to("bookmarks"))
+            ("Power", "#2a0000", "#ff4444", self._show_power_menu)
         ]
         
         self.app_hitboxes = []
@@ -426,7 +403,7 @@ class MatterDeskCore:
                 cmd()
                 break
 
-    # --- Active Telemetry & Animations ---
+    # --- Active Clock Processing ---
     def _clock_tick(self):
         now = datetime.datetime.now()
         h = now.strftime("%I")
@@ -441,19 +418,16 @@ class MatterDeskCore:
         
         self.clock_f.itemconfig(self.c_ap, text=ap)
         self.last_h, self.last_m, self.last_s = h, m, s
-            
         hr24 = now.hour
         if hr24 < 12: greet = "Good morning,"
         elif hr24 < 17: greet = "Good afternoon,"
         else: greet = "Good evening,"
-        
         self.home_canvas.itemconfig(self.greet_id, text=greet)
         self.root.after(1000, self._clock_tick)
 
     def _slide_part(self, p_type, m_id, o_id, old_val, new_val):
         self.clock_f.itemconfig(o_id, text=old_val)
         self.clock_f.itemconfig(m_id, text=new_val)
-        
         x_coord = 0 if p_type == 'h' else (85 if p_type == 'm' else 170)
         self.clock_f.coords(o_id, x_coord, 30)
         self.clock_f.coords(m_id, x_coord, 80)
@@ -469,7 +443,6 @@ class MatterDeskCore:
         if getattr(self, 'current_frame', '') != "main":
             self.root.after(50, self._animate_weather)
             return
-
         if self.current_weather_type == "Rain":
             self.wx_canvas.delete("sun")
             if len(self.rain_particles) < 20:
@@ -502,7 +475,6 @@ class MatterDeskCore:
                 temp = round(res["current"]["temperature_2m"])
                 pop = res["current"]["precipitation_probability"]
                 code = res["current"]["weather_code"]
-                
                 desc = "Clear"
                 self.current_weather_type = "Clear"
                 if code in [1, 2, 3]: desc = "Partly Cloudy"
@@ -513,7 +485,6 @@ class MatterDeskCore:
                 elif code in [95, 96, 99]: 
                     desc = "Thunderstorm"
                     self.current_weather_type = "Rain"
-
                 self.root.after(0, lambda t=temp, p=pop, d=desc: self._update_weather_ui(t, p, d))
             except Exception as e: self.log(f"Weather Fetch Error: {e}")
             time.sleep(900) 
@@ -523,6 +494,7 @@ class MatterDeskCore:
         self.wx_canvas.itemconfig(self.weather_pop_id, text=f"Precipitation: {pop}%")
         self.wx_canvas.itemconfig(self.weather_desc_id, text=desc)
 
+    # --- Battery Telemetry Matrix Execution ---
     def _battery_telemetry_loop(self):
         while True:
             try:
@@ -539,8 +511,16 @@ class MatterDeskCore:
                 width = int((val / 100.0) * 240)
                 self.home_canvas.coords(self.batt_ui[ui_key]["bar"], 480, self.home_canvas.coords(self.batt_ui[ui_key]["bar"])[1], 480 + width, self.home_canvas.coords(self.batt_ui[ui_key]["bar"])[3])
                 
+                # Dynamic Bracket Evaluation
                 lower = (val // 10) * 10
                 upper = lower + 9
+                
+                # Dynamic Color Evaluation Matrix
+                if val >= 70: col = "#1db954"
+                elif val >= 30: col = "#88aaff"
+                else: col = "#ff4444"
+                
+                self.home_canvas.itemconfig(self.batt_ui[ui_key]["bar"], fill=col)
                 if val == 100: self.home_canvas.itemconfig(self.batt_ui[ui_key]["text"], text="100%")
                 else: self.home_canvas.itemconfig(self.batt_ui[ui_key]["text"], text=f"{lower}% - {upper}%")
 
@@ -558,7 +538,7 @@ class MatterDeskCore:
         tk.Button(f_wait, text="Cancel", font=self.font_sub, bg="#1a1a1a", fg="#ff4444", bd=0, command=self.wake_display).pack(ipadx=20, ipady=10)
 
     # ==========================================
-    # BOOKMARKS PLATFORM
+    # BOOKMARKS ARCHITECTURE MODULE
     # ==========================================
     def _build_bookmarks_ui(self):
         f = tk.Frame(self.root, bg="#121212")
@@ -570,68 +550,51 @@ class MatterDeskCore:
         tk.Button(top, text="< BACK", font=self.font_body, bg="#121212", fg="#fff", bd=0, command=lambda: self.nav_to("main")).pack(side="left")
         tk.Label(top, text="CROSS-DEVICE BOOKMARKS", font=self.font_sub, fg="#ff88aa", bg="#121212").pack(side="right", padx=20)
         
+        # Cross-Device Toggle Hub Row
+        nav_row = tk.Frame(f, bg="#121212")
+        nav_row.pack(fill="x", padx=20, pady=5)
+        devices = ["MacBook", "Workstation", "Server"]
+        for d in devices:
+            btn = tk.Button(nav_row, text=d.upper(), font=font.Font(size=10, weight="bold"), bg="#1a1a1a", fg="#ff88aa", bd=0, command=lambda dev=d: self._load_device_bookmarks(dev))
+            btn.pack(side="left", padx=5, ipady=8, expand=True, fill="x")
+            
         self.bm_canvas = tk.Canvas(f, bg="#050505", highlightthickness=0)
         self.bm_canvas.pack(fill="both", expand=True, padx=20, pady=10)
-        self.bm_canvas.create_text(380, 180, text="Awaiting Desktop Client Integration...", fill="#666666", font=self.font_body, justify="center")
+        self._load_device_bookmarks("MacBook")
 
-    # ==========================================
-    # NETWORK MANIPULATION (WOL & LAN SCAN)
-    # ==========================================
-    def _build_wol_ui(self):
-        f = tk.Frame(self.root, bg="#000000")
-        f.place(x=0, y=0, relwidth=1, relheight=1)
-        self.frames["wol"] = f
-        self.wol_canvas = tk.Canvas(f, width=800, height=480, bg="#050505", highlightthickness=0)
-        self.wol_canvas.pack(fill="both", expand=True)
+    def _load_device_bookmarks(self, device):
+        self.bm_canvas.delete("all")
+        if not getattr(self, 'firebase_active', False):
+            self.bm_canvas.create_text(380, 100, text="Firebase Link Dropped.", fill="#ff4444", font=self.font_body)
+            return
+        
+        self.bm_canvas.create_text(20, 20, text=f"Querying nodes for {device}...", fill="#888", font=self.font_body, anchor="w")
+        threading.Thread(target=self._fetch_bookmarks_worker, args=(device,), daemon=True).start()
 
+    def _fetch_bookmarks_worker(self, device):
         try:
-            self.wol_canvas.create_text(400, 150, text="WAKING WORKSTATION", font=font.Font(family="Horizon", size=24, weight="bold"), fill="#1db954")
-        except:
-            self.wol_canvas.create_text(400, 150, text="WAKING WORKSTATION", font=font.Font(family="Helvetica", size=24, weight="bold"), fill="#1db954")
-
-        self.wol_canvas.create_text(400, 200, text="TARGET IP: 192.168.1.141", font=font.Font(family="Courier", size=14), fill="#aaaaaa")
-        self.wol_canvas.create_text(400, 230, text="TARGET MAC: EC:75:0C:8E:E2:1C", font=font.Font(family="Courier", size=14), fill="#aaaaaa")
-
-        self.pulse_rings = []
-        for i in range(3):
-            ring = self.wol_canvas.create_oval(400, 350, 400, 350, outline="#1db954", width=2)
-            self.pulse_rings.append({"id": ring, "radius": i * 40})
-
-    def _animate_wol(self):
-        if getattr(self, 'current_frame', '') != "wol": return
-
-        for p in self.pulse_rings:
-            p["radius"] += 2
-            if p["radius"] > 150:
-                p["radius"] = 0
-            r = p["radius"]
-            self.wol_canvas.coords(p["id"], 400-r, 350-r, 400+r, 350+r)
-
-        self.root.after(30, self._animate_wol)
-
-    def _trigger_wol(self):
-        self.log("Sending Wake-on-LAN Magic Packet to 192.168.1.141")
-        try:
-            mac = "ec:75:0c:8e:e2:1c"
-            mac_bytes = bytes.fromhex(mac.replace(':', ''))
-            magic_packet = b'\xff' * 6 + mac_bytes * 16
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-                s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-                # Forced subnet broadcast to bypass Linux routing quirks
-                s.sendto(magic_packet, ('192.168.1.255', 9))
-                s.sendto(magic_packet, ('192.168.1.141', 9))
-            
-            for i, p in enumerate(self.pulse_rings):
-                p["radius"] = i * 40
-                
-            self.nav_to("wol")
-            self._animate_wol()
-            self.root.after(3500, lambda: self.nav_to("main"))
-            
+            links = db.reference(f'telemetry/bookmarks/{device.lower()}').get() or []
+            self.root.after(0, lambda: self._render_bookmarks(links))
         except Exception as e:
-            self.log(f"WOL Error: {e}")
-            TouchModal(self.root, "Network Error", [str(e)], lambda x: None)
+            self.root.after(0, lambda: self.bm_canvas.create_text(20, 50, text=f"Fetch Error: {e}", fill="#ff4444", font=self.font_body, anchor="w"))
 
+    def _render_bookmarks(self, links):
+        self.bm_canvas.delete("all")
+        if not links:
+            self.bm_canvas.create_text(20, 30, text="No active bookmarks indexed under this profile node.", fill="#666666", font=self.font_body, anchor="w")
+            return
+        
+        y = 30
+        for item in links:
+            title = item.get('title', 'Unknown Tab')
+            url = item.get('url', '#')
+            self.bm_canvas.create_text(20, y, text=title[:40], fill="#ffffff", font=self.font_sub, anchor="w")
+            self.bm_canvas.create_text(320, y, text=url[:50], fill="#ff88aa", font=font.Font(family="Courier", size=11), anchor="w")
+            y += 35
+
+    # ==========================================
+    # KERNEL ARP SCANNER (NETWORK)
+    # ==========================================
     def _build_network_ui(self):
         f = tk.Frame(self.root, bg="#121212")
         f.place(x=0, y=0, relwidth=1, relheight=1)
@@ -640,8 +603,7 @@ class MatterDeskCore:
         top = tk.Frame(f, bg="#121212", height=40)
         top.pack(fill="x", padx=10, pady=10)
         tk.Button(top, text="< BACK", font=self.font_body, bg="#121212", fg="#fff", bd=0, command=lambda: self.nav_to("main")).pack(side="left")
-        tk.Label(top, text="LAN SCANNER (ARP)", font=self.font_sub, fg="#aa88ff", bg="#121212").pack(side="right", padx=20)
-        
+        tk.Label(top, text="NETWORK MAPPER (ARP)", font=self.font_sub, fg="#aa88ff", bg="#121212").pack(side="right", padx=20)
         self.net_canvas = tk.Canvas(f, bg="#050505", highlightthickness=0)
         self.net_canvas.pack(fill="both", expand=True, padx=20, pady=10)
 
@@ -673,7 +635,6 @@ class MatterDeskCore:
         if not nodes:
             self.net_canvas.create_text(20, 20, text="No nodes found in ARP cache.", fill="#aaaaaa", font=self.font_body, anchor="w")
             return
-        
         y = 20
         self.net_canvas.create_text(20, y, text=f"Discovered {len(nodes)} active nodes:", fill="#aa88ff", font=self.font_sub, anchor="w")
         y += 40
@@ -700,19 +661,16 @@ class MatterDeskCore:
         if not self.is_asleep: return
         self.ss_x += self.ss_dx
         self.ss_y += self.ss_dy
-        
         if self.ss_x > 700 or self.ss_x < 100: self.ss_dx *= -1
         if self.ss_y > 430 or self.ss_y < 50: self.ss_dy *= -1
-        
         self.ss_canvas.coords(self.ss_text, self.ss_x, self.ss_y)
         t_str = datetime.datetime.now().strftime("%I:%M %p")
         if t_str.startswith("0"): t_str = t_str[1:]
         self.ss_canvas.itemconfig(self.ss_text, text=t_str)
-        
         self.root.after(50, self._animate_screensaver)
 
     # ==========================================
-    # STUDY ENGINE (ABSOLUTE MODE & LOGS)
+    # STUDY ENGINE (ABSOLUTE DRIVING SPRINT)
     # ==========================================
     def _init_firebase(self):
         self.study_active = False
@@ -768,17 +726,14 @@ class MatterDeskCore:
         
         self.heatmap_canvas = tk.Canvas(tsk, height=120, bg="#121212", highlightthickness=0)
         self.heatmap_canvas.pack(fill="x", padx=10, pady=10)
-        
         self.history_list_canvas = tk.Canvas(tsk, bg="#121212", highlightthickness=0, height=80)
         self.history_list_canvas.pack(fill="x", padx=10, pady=(0, 10))
-
         self._draw_visceral_ring(360, "#333333")
 
-        # ABSOLUTE MODE UI
+        # ABSOLUTE STATE CONFIGURATION
         f_abs = tk.Frame(self.root, bg="#000000")
         f_abs.place(x=0, y=0, relwidth=1, relheight=1)
         self.frames["study_absolute"] = f_abs
-        
         self.abs_canvas = tk.Canvas(f_abs, bg="#000000", highlightthickness=0)
         self.abs_canvas.pack(fill="both", expand=True)
         self.abs_text = self.abs_canvas.create_text(400, 240, text="00:00:00", font=font.Font(family="Helvetica", size=120, weight="bold"), fill="#1db954")
@@ -790,10 +745,8 @@ class MatterDeskCore:
         if getattr(self, 'current_frame', '') == "study_absolute":
             self.abs_x += self.abs_dx
             self.abs_y += self.abs_dy
-            
             if self.abs_x > 600 or self.abs_x < 200: self.abs_dx *= -1
             if self.abs_y > 350 or self.abs_y < 100: self.abs_dy *= -1
-            
             self.abs_canvas.coords(self.abs_text, self.abs_x, self.abs_y)
         self.root.after(50, self._animate_abs_screensaver)
 
@@ -880,20 +833,16 @@ class MatterDeskCore:
             sessions = db.reference('sessions').get() or {}
             daily_totals = {}
             recent_logs = []
-            
             sorted_keys = sorted(sessions.keys(), key=lambda k: sessions[k].get('timestamp', 0))
-            
             for k in sorted_keys:
                 data = sessions[k]
                 ts = data.get('timestamp', 0)
                 date_str = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d')
                 daily_totals[date_str] = daily_totals.get(date_str, 0) + data.get('duration_seconds', 0)
-                
                 dur_m = data.get('duration_seconds', 0) // 60
                 subj = data.get('subject', 'Unknown')
                 log_time = datetime.datetime.fromtimestamp(ts).strftime('%b %d')
                 recent_logs.append(f"{log_time} | {subj} ({dur_m}m)")
-            
             self.root.after(0, lambda dt=daily_totals, rl=recent_logs[-3:]: self._draw_heatmap(dt, rl))
         except Exception as e: self.log(f"Heatmap Render Error: {e}")
 
@@ -1160,7 +1109,6 @@ class MatterDeskCore:
             if fetch.returncode != 0: raise Exception(f"Fetch failed: {fetch.stderr}")
             reset = subprocess.run(["git", "reset", "--hard", "origin/main"], cwd=cwd, capture_output=True, text=True)
             if reset.returncode != 0: raise Exception(f"Reset failed: {reset.stderr}")
-            
             self.log("OTA firmware updated successfully.")
             self.ota_finished = True
             time.sleep(1.5)
