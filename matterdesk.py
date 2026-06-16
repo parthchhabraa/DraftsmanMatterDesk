@@ -29,7 +29,7 @@ SPOTIFY_CACHE_PATH = '/home/st6b/matterdesk/.cache'
 class MatterDeskCore:
     def __init__(self):
         self.system_logs = []
-        self.log("System Initializing - MatterDesk v5.0 (Modular Architecture)")
+        self.log("System Initializing - MatterDesk v5.0 (Stable Master Integration)")
         
         self.root = tk.Tk()
         self.root.overrideredirect(True)
@@ -521,9 +521,6 @@ class MatterDeskCore:
         if getattr(self, 'study_active', False): self.study.toggle_timer()
         self.nav_to("main")
 
-    def _render_github_heatmap(self):
-        pass
-
     def _build_spotify_ui(self):
         f = tk.Frame(self.root, bg="#121212")
         f.place(x=0, y=0, relwidth=1, relheight=1)
@@ -584,17 +581,78 @@ class MatterDeskCore:
         elif key == "CAPS": self.caps_lock_active = not self.caps_lock_active; self._build_osk()
         else: self.entry_pass.insert(tk.END, key.upper() if self.caps_lock_active else key)
 
-    def _build_system_ui(self): pass
-    def _build_logs_ui(self): pass
-    def _build_diagnostics_ui(self): pass
-    def wake_display(self): pass
-    def sleep_display(self): pass
-    def kill_active_processes(self): pass
-    def _show_power_menu(self): pass
-    def _trigger_wifi_modal(self): pass
-    def _connect_wifi(self): pass
-    def _exec_ota(self): pass
-    def touch_listener(self): pass
+    def _build_system_ui(self):
+        f = tk.Frame(self.root, bg="#121212")
+        f.place(x=0, y=0, relwidth=1, relheight=1)
+        self.frames["system"] = f
+
+    def _build_logs_ui(self):
+        f = tk.Frame(self.root, bg="#121212")
+        f.place(x=0, y=0, relwidth=1, relheight=1)
+        self.frames["logs"] = f
+
+    def _build_diagnostics_ui(self):
+        f = tk.Frame(self.root, bg="#121212")
+        f.place(x=0, y=0, relwidth=1, relheight=1)
+        self.frames["diagnostics"] = f
+
+    def wake_display(self):
+        if self.is_asleep:
+            self.is_asleep = False
+            self.last_interaction = time.time()
+            os.system(f'echo 0 | sudo tee {BACKLIGHT_POWER} > /dev/null')
+        self.kill_active_processes()
+        self.root.geometry("800x480+0+0")
+        self.nav_to("main")
+
+    def sleep_display(self):
+        if not self.is_asleep:
+            self.is_asleep = True
+            self.kill_active_processes()
+            self.nav_to("standby")
+            os.system(f'echo 1 | sudo tee {BACKLIGHT_POWER} > /dev/null')
+            self._animate_screensaver()
+
+    def kill_active_processes(self):
+        self.prevent_sleep = False
+        if getattr(self, 'active_process', None): self.active_process.terminate()
+        self.active_process = None
+        os.system("killall uxplay node chromium-browser > /dev/null 2>&1")
+
+    def _show_power_menu(self):
+        TouchModal(self.root, "System Power", ["Standby", "Reboot", "Power Off"], self._handle_power_choice)
+
+    def _handle_power_choice(self, choice):
+        if choice == "Standby": self.sleep_display()
+        elif choice == "Reboot": os.system("sudo reboot")
+        elif choice == "Power Off": os.system("sudo poweroff")
+
+    def _trigger_wifi_modal(self):
+        try:
+            out = subprocess.check_output(['nmcli', '-t', '-f', 'SSID', 'dev', 'wifi']).decode()
+            networks = list(set([n for n in out.split('\n') if n.strip()]))
+        except: networks = ["Scan Failed"]
+        TouchModal(self.root, "Available Networks", networks, lambda s: self.btn_wifi_sel.config(text=s))
+
+    def launch_uxplay(self):
+        self.prevent_sleep = True
+        self.kill_active_processes()
+        self.nav_to("waiting")
+        env = os.environ.copy()
+        env.update({"WAYLAND_DISPLAY": "wayland-1", "XDG_RUNTIME_DIR": "/run/user/1000"})
+        self.active_process = subprocess.Popen(["stdbuf", "-oL", "uxplay", "-n", "MatterDesk", "-p", "-avdec", "-vs", "autovideosink"], env=env)
+
+    def touch_listener(self):
+        try:
+            device = evdev.InputDevice(TOUCH_DEVICE)
+            last = 0
+            for event in device.read_loop():
+                self.last_interaction = time.time()
+                if self.is_asleep and event.type == evdev.ecodes.EV_KEY and event.value == 1:
+                    curr = time.time()
+                    if curr - last < 0.6: self.root.after(0, self.wake_display)
+                    last = curr
+        except: pass
 
     def run(self): self.root.mainloop()
 
