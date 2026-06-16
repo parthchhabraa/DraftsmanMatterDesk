@@ -1,8 +1,9 @@
 import tkinter as tk
 from tkinter import font
-import evdev, threading, time, os, subprocess, json, datetime, random
-from PIL import Image, ImageTk
-from firebase_admin import credentials, firebase_admin
+import evdev, threading, time, os, subprocess, json, datetime, random, math
+from PIL import Image, ImageTk, ImageDraw
+import firebase_admin
+from firebase_admin import credentials
 
 # Import decoupled specialized engine profiles
 from modules.telemetry import TelemetryEngine
@@ -10,6 +11,20 @@ from modules.study import StudyEngine
 from modules.dpn import DpnEngine
 from modules.bookmarks import BookmarksEngine
 from modules.spotify import SpotifyEngine
+
+# --- System Paths ---
+BACKLIGHT_POWER = '/sys/class/backlight/10-0045/bl_power'
+BACKLIGHT_BRIGHT = '/sys/class/backlight/10-0045/brightness'
+TOUCH_DEVICE = '/dev/input/event4'
+LOGO_IMG_PATH = '/home/st6b/matterdesk/images/logo.png'
+FIREBASE_KEY_PATH = '/home/st6b/matterdesk/serviceAccountKey.json'
+GITHUB_REPO_URL = 'https://github.com/parthchhabraa/DraftsmanMatterDesk.git'
+
+# --- API Context ---
+SPOTIFY_CLIENT_ID = '515b520ddd7b4ed2a33fdd1091c9ef00'
+SPOTIFY_CLIENT_SECRET = 'e24611ecfa1c4be2b28c1d59e40af0b8'
+SPOTIFY_REDIRECT_URI = 'http://127.0.0.1:8080/callback'
+SPOTIFY_CACHE_PATH = '/home/st6b/matterdesk/.cache'
 
 class MatterDeskCore:
     def __init__(self):
@@ -40,12 +55,14 @@ class MatterDeskCore:
         self.dpn_country = "United States"
         self.dpn_adblock = True
         self.dpn_client_count = 0
+        self.qr_image_tk = None
 
         # --- Graphics Variables ---
         self.font_header = font.Font(family="Helvetica", size=22, weight="bold")
         self.font_sub = font.Font(family="Helvetica", size=14, weight="bold")
         self.font_body = font.Font(family="Helvetica", size=12)
         self.frames = {}
+        self.batt_ui = {}
         self.bg_image = self._generate_gradient(800, 480, (5, 5, 5), (10, 20, 45))
         
         # --- Instantiate Component Drivers ---
@@ -456,7 +473,7 @@ class MatterDeskCore:
         eng.pack(side="left", fill="y", padx=20, pady=20)
         eng.pack_propagate(False)
         
-        tk.Button(eng, text="< ABORT", font=self.font_body, bg="#1a1a1a", fg="#ff4444", bd=0, command=self.study._exit_study).pack(anchor="w")
+        tk.Button(eng, text="< ABORT", font=self.font_body, bg="#1a1a1a", fg="#ff4444", bd=0, command=self._exit_study).pack(anchor="w")
         tk.Label(eng, text="Hello Parth Chhabra,", font=self.font_sub, fg="#88aaff", bg="#050505", anchor="w").pack(fill="x", pady=(20,0))
         self.ring_canvas = tk.Canvas(eng, width=200, height=200, bg="#050505", highlightthickness=0)
         self.ring_canvas.pack(pady=10)
@@ -500,8 +517,12 @@ class MatterDeskCore:
         opts = {"30 Mins": 1800, "45 Mins": 2700, "1 Hr": 3600, "1 Hr 30 Mins": 5400, "2 Hrs": 7200}
         TouchModal(self.root, "Select Duration", list(opts.keys()), lambda s: (setattr(self, 'total_target_seconds', opts[s]), self.lbl_target.config(text=f"Target: {s}")))
 
+    def _exit_study(self):
+        if getattr(self, 'study_active', False): self.study.toggle_timer()
+        self.nav_to("main")
+
     def _render_github_heatmap(self):
-        if getattr(self, 'firebase_active', False): self.study._render_github_heatmap()
+        pass
 
     def _build_spotify_ui(self):
         f = tk.Frame(self.root, bg="#121212")
@@ -566,7 +587,6 @@ class MatterDeskCore:
     def _build_system_ui(self): pass
     def _build_logs_ui(self): pass
     def _build_diagnostics_ui(self): pass
-    def _animate_vinyl(self): self.spotify.animate_vinyl()
     def wake_display(self): pass
     def sleep_display(self): pass
     def kill_active_processes(self): pass

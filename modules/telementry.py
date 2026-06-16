@@ -29,7 +29,7 @@ class TelemetryEngine:
                 remaining_idle = max(0, self.core.idle_timeout - time_since_interaction)
                 
                 up_sec = time.time() - psutil.boot_time()
-                up_d, up_h, up_m = int(up_sec // 86400), int((up_sec % 86400) // 3600), int((up_sec % 3360) // 60)
+                up_d, up_h, up_m = int(up_sec // 86400), int((up_sec % 86400) // 3600), int((up_sec % 3600) // 60)
                 up_str = f"UP: {up_d}d {up_h}h" if up_d > 0 else f"UP: {up_h}h {up_m}m"
                 
                 if not self.core.is_asleep and not getattr(self.core, 'prevent_sleep', False):

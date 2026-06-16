@@ -1,6 +1,7 @@
 import random
 import threading
 import os
+import time
 import tkinter as tk
 from PIL import ImageTk
 import qrcode
