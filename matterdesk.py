@@ -73,7 +73,7 @@ class TouchModal(tk.Toplevel):
 class MatterDeskCore:
     def __init__(self):
         self.system_logs = []
-        self.log("System Initializing - MatterDesk v4.5 (DPN Engine & CapsLock Integration)")
+        self.log("System Initializing - MatterDesk v4.5 (Stable Master Integration)")
         
         self.root = tk.Tk()
         self.root.overrideredirect(True)
@@ -81,28 +81,40 @@ class MatterDeskCore:
         self.root.geometry("800x480+0+0")
         self.root.configure(bg="#050505", cursor="arrow")
         
+        # ==========================================
+        # 1. CORE STRUCTURAL STATE DECLARATIONS
+        # ==========================================
         self.is_asleep = False
         self.prevent_sleep = False
         self.active_process = None 
         self.last_interaction = time.time()
         self.idle_timeout = 600
+        self.current_frame = "boot"
         
-        # --- Network Graph Vectors ---
+        # --- Network Graph State Vectors ---
         self.net_history_tx = [0] * 40
         self.net_history_rx = [0] * 40
         self.last_net_bytes_tx = psutil.net_io_counters().bytes_sent
         self.last_net_bytes_rx = psutil.net_io_counters().bytes_recv
         
-        # --- DPN State Controllers ---
+        # --- DPN State Engine ---
         self.dpn_active = False
         self.dpn_ssid = "Draftsman DPN"
         self.dpn_country = "United States"
         self.dpn_adblock = True
         self.dpn_client_count = 0
         
-        # --- Keyboard State Modifiers ---
+        # --- Keyboard Modification Maps ---
         self.caps_lock_active = False
         
+        # --- Study Mechanics State ---
+        self.study_active = False
+        self.study_seconds = 0
+        self.total_target_seconds = 0
+        self.current_subject = tk.StringVar(value="Maths")
+        self.study_job = None
+        
+        # --- Graphics Context Allocation ---
         self.font_header = font.Font(family="Helvetica", size=22, weight="bold")
         self.font_sub = font.Font(family="Helvetica", size=14, weight="bold")
         self.font_body = font.Font(family="Helvetica", size=12)
@@ -110,9 +122,15 @@ class MatterDeskCore:
         self.frames = {}
         self.bg_image = self._generate_gradient(800, 480, (5, 5, 5), (10, 20, 45))
         
+        # ==========================================
+        # 2. SUBSYSTEM INTERFACE CONNECTIVITY
+        # ==========================================
         self._init_spotify()
         self._init_firebase()
         
+        # ==========================================
+        # 3. INTERFACE BUILD MATRIX
+        # ==========================================
         self._build_boot_ui()
         self._build_ota_ui()
         self._build_standby_ui()
@@ -129,6 +147,9 @@ class MatterDeskCore:
         self._build_telemetry_bar()
         self._build_thermal_panic_ui()
         
+        # ==========================================
+        # 4. RUNTIME THREAD ORCHESTRATION
+        # ==========================================
         self.tap_times = []
         self.root.bind("<Button-1>", self._global_tap_handler, add="+")
         
@@ -253,7 +274,7 @@ class MatterDeskCore:
         self.root.after(50, self._animate_ota_bar)
 
     # ==========================================
-    # GLOBAL TELEMETRY ENGINE & REAL-TIME GRAPH
+    # SYSTEM POWER & TELEMETRY HUB
     # ==========================================
     def _build_telemetry_bar(self):
         f = tk.Frame(self.root, bg="#000000", height=20)
@@ -287,6 +308,11 @@ class MatterDeskCore:
         self.lbl_panic_count = tk.Label(f, text="Powering off in 60s to prevent degradation.", font=self.font_header, fg="#fff", bg="#1a0000")
         self.lbl_panic_count.pack(pady=40)
         tk.Button(f, text="OVERRIDE (RISK DAMAGE)", font=self.font_sub, bg="#330000", fg="#ff4444", bd=0, command=self._cancel_panic).pack(ipady=10, ipadx=20)
+
+    def _cancel_panic(self):
+        self.log("Thermal shutdown overridden by user risk authorization.")
+        self.thermal_panic = False
+        self.nav_to("main")
 
     def _hardware_telemetry_loop(self):
         while True:
@@ -366,8 +392,22 @@ class MatterDeskCore:
             y2_rx = 18 - int((self.net_history_rx[i+1] / max_val) * 16)
             self.telemetry_graph.create_line(x1, y1_rx, x2, y2_rx, fill="#88aaff", width=1)
 
+    def _trigger_panic(self):
+        self.log("CRITICAL: Thermal shutdown initiated.")
+        self.frames["panic"].tkraise()
+        self.kill_active_processes()
+        self._panic_tick()
+
+    def _panic_tick(self):
+        if not self.thermal_panic: return
+        self.lbl_panic_count.config(text=f"Powering off in {self.panic_countdown}s...")
+        if self.panic_countdown <= 0: self.poweroff_system()
+        else:
+            self.panic_countdown -= 1
+            self.root.after(1000, self._panic_tick)
+
     # ==========================================
-    # MAIN BENTO GRID MATRIX LAYOUT
+    # MAIN MENU BENTO DESIGN
     # ==========================================
     def _build_main_menu(self):
         f = tk.Frame(self.root)
@@ -830,7 +870,7 @@ class MatterDeskCore:
             y += 35
 
     # ==========================================
-    # STANDBY ANTI-BURN SCREENSAVER
+    # STANDBY SCREENSAVER MODULE
     # ==========================================
     def _build_standby_ui(self):
         f = tk.Frame(self.root, bg="#000000")
@@ -855,14 +895,9 @@ class MatterDeskCore:
         self.root.after(50, self._animate_screensaver)
 
     # ==========================================
-    # STUDY ENGINE & AUTOMATED STANDBY RANDOMIZER
+    # STUDY ENGINE & AUTOMATED ABSOLUTE ECO FADE
     # ==========================================
     def _init_firebase(self):
-        self.study_active = False
-        self.study_seconds = 0
-        self.total_target_seconds = 0
-        self.current_subject = tk.StringVar(value="Maths")
-        self.study_job = None
         try:
             if not firebase_admin._apps:
                 cred = credentials.Certificate(FIREBASE_KEY_PATH)
@@ -915,14 +950,13 @@ class MatterDeskCore:
         self.history_list_canvas.pack(fill="x", padx=10, pady=(0, 10))
         self._draw_visceral_ring(360, "#333333")
 
-        # --- ABSOLUTE DISCRETE ENGINE ---
+        # --- ABSOLUTE FRAME BOUNDING ---
         f_abs = tk.Frame(self.root, bg="#000000")
         f_abs.place(x=0, y=0, relwidth=1, relheight=1)
         self.frames["study_absolute"] = f_abs
         
         self.abs_canvas = tk.Canvas(f_abs, bg="#000000", highlightthickness=0)
         self.abs_canvas.pack(fill="both", expand=True)
-        
         self.abs_text = self.abs_canvas.create_text(400, 240, text="00:00:00", font=font.Font(family="Helvetica", size=90, weight="bold"), fill="#1db954")
         self.abs_canvas.bind("<Button-1>", lambda e: self.nav_to("study"))
 
@@ -1259,7 +1293,6 @@ class MatterDeskCore:
             for c, key in enumerate(row):
                 self.kbd_container.columnconfigure(c, weight=1)
                 
-                # Dynamic visual toggle map for Caps Lock key boundaries
                 if key == "CAPS":
                     bg = "#1a2a4a" if self.caps_lock_active else "#1a1a1a"
                     fg = "#00aaff" if self.caps_lock_active else "#ffffff"
@@ -1494,7 +1527,7 @@ class MatterDeskCore:
         except Exception: pass
 
     # ==========================================
-    # DISPLAY WAKELOCK CONTROLS
+    # DISPLAY WAKELOCK MECHANICS
     # ==========================================
     def wake_display(self):
         if self.is_asleep:
