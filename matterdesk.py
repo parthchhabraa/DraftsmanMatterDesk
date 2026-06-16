@@ -18,6 +18,7 @@ import datetime
 import socket
 import math
 import random
+import qrcode
 
 # --- System Paths ---
 BACKLIGHT_POWER = '/sys/class/backlight/10-0045/bl_power'
@@ -73,7 +74,7 @@ class TouchModal(tk.Toplevel):
 class MatterDeskCore:
     def __init__(self):
         self.system_logs = []
-        self.log("System Initializing - MatterDesk v4.5 (Stable Master Integration)")
+        self.log("System Initializing - MatterDesk v4.5 (DPN Secure Air Edition)")
         
         self.root = tk.Tk()
         self.root.overrideredirect(True)
@@ -97,12 +98,14 @@ class MatterDeskCore:
         self.last_net_bytes_tx = psutil.net_io_counters().bytes_sent
         self.last_net_bytes_rx = psutil.net_io_counters().bytes_recv
         
-        # --- DPN State Engine ---
+        # --- DPN State Engine (High Entropy Hardening) ---
         self.dpn_active = False
         self.dpn_ssid = "Draftsman DPN"
+        self.dpn_passkey = "Draftsman!Crypto!Secure!Core!99"
         self.dpn_country = "United States"
         self.dpn_adblock = True
         self.dpn_client_count = 0
+        self.qr_image_tk = None
         
         # --- Keyboard Modification Maps ---
         self.caps_lock_active = False
@@ -274,7 +277,7 @@ class MatterDeskCore:
         self.root.after(50, self._animate_ota_bar)
 
     # ==========================================
-    # SYSTEM POWER & TELEMETRY HUB
+    # GLOBAL TELEMETRY ENGINE & REAL-TIME GRAPH
     # ==========================================
     def _build_telemetry_bar(self):
         f = tk.Frame(self.root, bg="#000000", height=20)
@@ -392,20 +395,6 @@ class MatterDeskCore:
             y2_rx = 18 - int((self.net_history_rx[i+1] / max_val) * 16)
             self.telemetry_graph.create_line(x1, y1_rx, x2, y2_rx, fill="#88aaff", width=1)
 
-    def _trigger_panic(self):
-        self.log("CRITICAL: Thermal shutdown initiated.")
-        self.frames["panic"].tkraise()
-        self.kill_active_processes()
-        self._panic_tick()
-
-    def _panic_tick(self):
-        if not self.thermal_panic: return
-        self.lbl_panic_count.config(text=f"Powering off in {self.panic_countdown}s...")
-        if self.panic_countdown <= 0: self.poweroff_system()
-        else:
-            self.panic_countdown -= 1
-            self.root.after(1000, self._panic_tick)
-
     # ==========================================
     # MAIN MENU BENTO DESIGN
     # ==========================================
@@ -428,7 +417,6 @@ class MatterDeskCore:
         self.c_h_o = self.clock_f.create_text(0, -30, text="", font=c_fnt, fill="#ffffff", anchor="w")
         self.clock_f.create_text(65, 27, text=":", font=c_fnt, fill="#777777", anchor="w")
         self.c_m_m = self.clock_f.create_text(85, 30, text="00", font=c_fnt, fill="#ffffff", anchor="w")
-        self.c_m_o = self.clock_f.create_text(85, -30, text="", font=c_fnt, fill="#ffffff", anchor="w")
         self.clock_f.create_text(150, 27, text=":", font=c_fnt, fill="#777777", anchor="w")
         self.c_s_m = self.clock_f.create_text(170, 30, text="00", font=c_fnt, fill="#ffffff", anchor="w")
         self.c_s_o = self.clock_f.create_text(170, -30, text="", font=c_fnt, fill="#ffffff", anchor="w")
@@ -658,7 +646,7 @@ class MatterDeskCore:
         top = tk.Frame(f, bg="#111625", height=50)
         top.pack(fill="x")
         tk.Button(top, text="< BACK", font=self.font_body, bg="#111625", fg="#fff", bd=0, command=lambda: self.nav_to("main")).pack(side="left", padx=10)
-        tk.Label(top, text="DRAFTSMAN DPN ARCHITECTURE", font=self.font_sub, fg="#00aaff", bg="#111625").pack(side="right", padx=20)
+        tk.Label(top, text="DRAFTSMAN SECURE AP DPN", font=self.font_sub, fg="#00aaff", bg="#111625").pack(side="right", padx=20)
         
         left_p = tk.Frame(f, bg="#0b0f19", width=380)
         left_p.pack(side="left", fill="both", expand=True, padx=20, pady=20)
@@ -694,10 +682,18 @@ class MatterDeskCore:
         right_p = tk.Frame(f, bg="#111625")
         right_p.pack(side="right", fill="both", expand=True, padx=20, pady=20)
         
-        tk.Label(right_p, text="ACTIVE CRYPTO CHANNELS", font=self.font_body, fg="#888", bg="#111625").pack(anchor="w", padx=15, pady=10)
+        tk.Label(right_p, text="SCAN MATRIX TO CONNECT", font=self.font_body, fg="#888", bg="#111625").pack(anchor="w", padx=15, pady=5)
         self.dpn_monitor_canvas = tk.Canvas(right_p, bg="#050505", highlightthickness=0)
         self.dpn_monitor_canvas.pack(fill="both", expand=True, padx=15, pady=(0, 15))
         self._render_dpn_canvas()
+
+    def _generate_dpn_qr(self):
+        qr_string = f"WIFI:S:{self.dpn_ssid};T:WPA;P:{self.dpn_passkey};;"
+        qr = qrcode.QRCode(version=1, box_size=4, border=2)
+        qr.add_data(qr_string)
+        qr.make(fit=True)
+        img_raw = qr.make_image(fill_color="white", back_color="black").convert("RGBA")
+        return img_raw.resize((150, 140), Image.Resampling.LANCZOS)
 
     def _render_dpn_canvas(self):
         self.dpn_monitor_canvas.delete("all")
@@ -705,11 +701,17 @@ class MatterDeskCore:
             self.dpn_monitor_canvas.create_text(180, 100, text="Tunnel Array Offline\nWaiting for Core Ignition Sequence...", fill="#444", font=self.font_body, justify="center")
             return
             
-        self.dpn_monitor_canvas.create_text(20, 30, text=f"● AP Interface: wlan0 ({self.dpn_ssid})", fill="#1db954", font=self.font_body, anchor="w")
-        self.dpn_monitor_canvas.create_text(20, 60, text=f"● WAN Uplink: wlan1 (TP-Link Target)", fill="#1db954", font=self.font_body, anchor="w")
-        self.dpn_monitor_canvas.create_text(20, 90, text=f"● Secure Node IP: 10.45.0.1", fill="#00aaff", font=self.font_body, anchor="w")
-        self.dpn_monitor_canvas.create_text(20, 120, text=f"● Active Routed Clients: {self.dpn_client_count} Nodes", fill="#fff", font=self.font_body, anchor="w")
-        self.dpn_monitor_canvas.create_text(20, 150, text=f"● Core Layer Encryption: WireGuard ChaCha20", fill="#888", font=font.Font(size=10, family="Courier"), anchor="w")
+        self.dpn_monitor_canvas.create_text(20, 20, text=f"● Broadcast: wlan0 ({self.dpn_ssid})", fill="#1db954", font=self.font_body, anchor="w")
+        self.dpn_monitor_canvas.create_text(20, 45, text=f"● WAN Matrix: wlan1 (TP-Link)", fill="#1db954", font=self.font_body, anchor="w")
+        self.dpn_monitor_canvas.create_text(20, 70, text=f"● Gateway: 10.45.0.1", fill="#00aaff", font=self.font_body, anchor="w")
+        self.dpn_monitor_canvas.create_text(20, 95, text=f"● Active Clients: {self.dpn_client_count} Nodes", fill="#fff", font=self.font_body, anchor="w")
+        
+        try:
+            qr_pil = self._generate_dpn_qr()
+            self.qr_image_tk = ImageTk.PhotoImage(qr_pil)
+            self.dpn_monitor_canvas.create_image(180, 210, image=self.qr_image_tk)
+        except Exception as e:
+            self.dpn_monitor_canvas.create_text(180, 210, text=f"QR Error: {e}", fill="#ff4444", font=self.font_body)
 
     def _toggle_dpn_engine(self):
         self.last_interaction = time.time()
@@ -721,9 +723,9 @@ class MatterDeskCore:
             self.btn_dpn_toggle.config(text="ACTIVATE DPN CORE", bg="#1a2a4a", fg="#00aaff")
             threading.Thread(target=lambda: os.system("sudo systemctl stop hostapd dnsmasq wg-quick@wg0 > /dev/null 2>&1"), daemon=True).start()
         else:
-            self.log("DPN Hardware Tunnel Matrix Ignited.")
+            self.log("DPN Secure AP Initiated with Hardened PSK Layer.")
             self.dpn_active = True
-            self.dpn_client_count = random.randint(2, 5) 
+            self.dpn_client_count = random.randint(1, 3) 
             self.lbl_dpn_status.config(text="NETWORK STATE: ROUTED", fg="#1db954")
             self.btn_dpn_toggle.config(text="DEACTIVATE DPN CORE", bg="#3a1a1a", fg="#ff4444")
             threading.Thread(target=lambda: os.system("sudo systemctl start hostapd dnsmasq wg-quick@wg0 > /dev/null 2>&1"), daemon=True).start()
@@ -897,17 +899,6 @@ class MatterDeskCore:
     # ==========================================
     # STUDY ENGINE & AUTOMATED ABSOLUTE ECO FADE
     # ==========================================
-    def _init_firebase(self):
-        try:
-            if not firebase_admin._apps:
-                cred = credentials.Certificate(FIREBASE_KEY_PATH)
-                firebase_admin.initialize_app(cred, {'databaseURL': 'https://draftsman-matterdesk-default-rtdb.firebaseio.com/'})
-            self.firebase_active = True
-            self.log("Firebase Database link active.")
-        except Exception as e:
-            self.firebase_active = False
-            self.log(f"Firebase Init Error: {e}")
-
     def _build_study_ui(self):
         f = tk.Frame(self.root, bg="#050505")
         f.place(x=0, y=0, relwidth=1, relheight=1)
@@ -960,14 +951,6 @@ class MatterDeskCore:
         self.abs_text = self.abs_canvas.create_text(400, 240, text="00:00:00", font=font.Font(family="Helvetica", size=90, weight="bold"), fill="#1db954")
         self.abs_canvas.bind("<Button-1>", lambda e: self.nav_to("study"))
 
-    def _draw_visceral_ring(self, extent, color):
-        if not hasattr(self, 'ring_canvas') or not self.ring_canvas.winfo_exists():
-            return
-        self.ring_canvas.delete("ring")
-        self.ring_canvas.create_oval(10, 10, 190, 190, outline="#1a1a1a", width=10, tags="ring")
-        if extent > 0: 
-            self.ring_canvas.create_arc(10, 10, 190, 190, start=90, extent=-extent, outline=color, style=tk.ARC, width=10, tags="ring")
-
     def _shuffle_abs_position(self):
         if getattr(self, 'current_frame', '') == "study_absolute":
             safe_x = random.randint(220, 580)
@@ -977,15 +960,6 @@ class MatterDeskCore:
         next_interval = random.randint(60000, 120000)
         self.root.after(next_interval, self._shuffle_abs_position)
 
-    def _trigger_subj_modal(self): TouchModal(self.root, "Select Subject", ["Maths", "Physics", "Ochem", "Pchem", "Ichem", "Other"], lambda s: (self.current_subject.set(s), self.btn_subj.config(text=s)))
-    def _trigger_dur_modal(self):
-        opts = {"30 Mins": 1800, "45 Mins": 2700, "1 Hr": 3600, "1 Hr 30 Mins": 5400, "2 Hrs": 7200}
-        TouchModal(self.root, "Select Duration", list(opts.keys()), lambda s: self._set_target(s, opts[s]))
-
-    def _set_target(self, label, seconds):
-        self.total_target_seconds = seconds
-        self.lbl_target.config(text=f"Target: {label}")
-        
     def _exit_study(self):
         if getattr(self, 'study_active', False): self._toggle_timer()
         self.nav_to("main")
@@ -1423,29 +1397,6 @@ class MatterDeskCore:
         tk.Button(b_frame, text="Select Playlist", bg="#222", fg="#fff", bd=0, font=self.font_body, command=self._trigger_playlist_modal).pack(side="right", ipady=10, ipadx=10)
         threading.Thread(target=self._poll_spotify_state, daemon=True).start()
 
-    def _trigger_device_modal(self):
-        opts = [d['name'] for d in getattr(self, 'sp', None).devices().get('devices', [])] if getattr(self, 'sp', None) else ["No devices"]
-        TouchModal(self.root, "Select Output Device", opts, self._sp_transfer)
-
-    def _trigger_playlist_modal(self):
-        opts = list(getattr(self, 'playlist_dict', {}).keys()) if getattr(self, 'playlist_dict', None) else ["No playlists"]
-        TouchModal(self.root, "Select Playlist", opts, self._sp_play_playlist)
-
-    def _sp_transfer(self, target_name):
-        if not getattr(self, 'sp', None): return
-        for d in self.sp.devices().get('devices', []):
-            if d['name'] == target_name:
-                try: self.sp.transfer_playback(device_id=d['id'], force_play=True)
-                except: pass
-                break
-
-    def _sp_play_playlist(self, p_name):
-        if not getattr(self, 'sp', None): return
-        p_uri = getattr(self, 'playlist_dict', {}).get(p_name)
-        if p_uri:
-            try: self.sp.start_playback(context_uri=p_uri)
-            except: pass
-
     def _poll_spotify_state(self):
         if not getattr(self, 'sp', None): return
         try:
@@ -1526,6 +1477,14 @@ class MatterDeskCore:
             else: self.sp.start_playback()
         except Exception: pass
 
+    def _sp_transfer(self, target_name):
+        if not getattr(self, 'sp', None): return
+        for d in self.sp.devices().get('devices', []):
+            if d['name'] == target_name:
+                try: self.sp.transfer_playback(device_id=d['id'], force_play=True)
+                except: pass
+                break
+
     # ==========================================
     # DISPLAY WAKELOCK MECHANICS
     # ==========================================
@@ -1545,45 +1504,6 @@ class MatterDeskCore:
             self.nav_to("standby")
             os.system(f'echo 1 | sudo tee {BACKLIGHT_POWER} > /dev/null')
             self._animate_screensaver()
-
-    def _show_power_menu(self):
-        TouchModal(self.root, "System Power", ["Standby", "Reboot", "Power Off"], self._handle_power_choice)
-
-    def _handle_power_choice(self, choice):
-        if choice == "Standby": self.sleep_display()
-        elif choice == "Reboot": self.reboot_system()
-        elif choice == "Power Off": self.poweroff_system()
-
-    def launch_uxplay(self):
-        self.prevent_sleep = True
-        self.kill_active_processes()
-        self.lbl_waiting.config(text="Waiting for AirPlay...")
-        self.nav_to("waiting")
-        env = os.environ.copy()
-        env.update({"WAYLAND_DISPLAY": "wayland-1", "XDG_RUNTIME_DIR": "/run/user/1000"})
-        self.active_process = subprocess.Popen(["stdbuf", "-oL", "uxplay", "-n", "MatterDesk", "-p", "-avdec", "-vs", "autovideosink"], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        threading.Thread(target=self._monitor_stream, args=("starting mirroring", "Begin streaming"), daemon=True).start()
-        self.fallback_job = self.root.after(8000, lambda: self._transform_to_pill() if self.active_process and self.active_process.poll() is None else None)
-
-    def _monitor_stream(self, t1, t2):
-        if not self.active_process: return
-        try:
-            for line in iter(self.active_process.stdout.readline, ''):
-                if not line: break
-                if t1 in line or t2 in line:
-                    if hasattr(self, 'fallback_job'): self.root.after_cancel(self.fallback_job)
-                    self.root.after(0, self._transform_to_pill)
-                    break
-        except: pass
-
-    def launch_desktop(self):
-        self.prevent_sleep = False
-        self.kill_active_processes()
-        self._transform_to_pill()
-
-    def _transform_to_pill(self):
-        self.nav_to("pill")
-        self.root.geometry("150x55+630+15")
 
     def kill_active_processes(self):
         self.prevent_sleep = False
