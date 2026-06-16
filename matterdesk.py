@@ -264,7 +264,7 @@ class MatterDeskCore:
             ("AirPlay", "#1a1a1a", "#fff", self.launch_uxplay),
             ("Spotify", "#0a2a10", "#1db954", lambda: self.nav_to("spotify")),
             ("Study", "#12123a", "#88aaff", lambda: self.nav_to("study")),
-            ("Network", "#2a1a3a", "#aa88ff", lambda: self._trigger_netscan())),
+            ("Network", "#2a1a3a", "#aa88ff", lambda: self._trigger_netscan),
             ("Bookmarks", "#3a1a1a", "#ff88aa", lambda: self.nav_to("bookmarks")),
             ("DPN VPN", "#112233", "#00aaff", lambda: self.nav_to("dpn")),
             ("Settings", "#222222", "#ddd", lambda: self.nav_to("settings")),
