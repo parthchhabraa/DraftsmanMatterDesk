@@ -4,6 +4,7 @@ import psutil
 import requests
 import random
 import tkinter as tk
+from firebase_admin import db
 
 class TelemetryEngine:
     def __init__(self, core):
@@ -15,12 +16,13 @@ class TelemetryEngine:
         self.current_weather_type = "Clear"
         self.rain_particles = []
         self.sun_angle = 0
-        self.last_h = self.last_m = self.last_s = ""
 
     def start_loops(self):
         import threading
         threading.Thread(target=self._hardware_telemetry_loop, daemon=True).start()
         threading.Thread(target=self._weather_telemetry_loop, daemon=True).start()
+        if getattr(self.core, 'firebase_active', False):
+            threading.Thread(target=self._battery_telemetry_loop, daemon=True).start()
 
     def _hardware_telemetry_loop(self):
         while True:
@@ -105,3 +107,31 @@ class TelemetryEngine:
             self.core.wx_canvas.itemconfig(self.core.weather_temp_id, text=f"{temp}°C")
             self.core.wx_canvas.itemconfig(self.core.weather_pop_id, text=f"Precipitation: {pop}%")
             self.core.wx_canvas.itemconfig(self.core.weather_desc_id, text=desc)
+
+    def _battery_telemetry_loop(self):
+        while True:
+            try:
+                data = db.reference('telemetry/batteries').get() or {}
+                self.core.root.after(0, lambda d=data: self._update_battery_ui(d))
+            except Exception: pass
+            time.sleep(60)
+
+    def _update_battery_ui(self, data):
+        if not hasattr(self.core, 'home_canvas') or not self.core.home_canvas.winfo_exists(): return
+        keys_map = {"iphone": "iphone", "macbook": "mac", "ipad": "ipad"}
+        for ui_key, db_key in keys_map.items():
+            val = data.get(db_key)
+            if val is not None and ui_key in self.core.batt_ui:
+                lower = (val // 10) * 10
+                upper = lower + 9 if lower < 100 else 100
+                midpoint = lower + 5 if lower < 100 else 100
+                base_x, max_width = 480, 240
+                width = int((val / 100.0) * max_width)
+                self.core.home_canvas.coords(self.core.batt_ui[ui_key]["bar"], base_x, self.core.home_canvas.coords(self.core.batt_ui[ui_key]["bar"])[1], base_x + width, self.core.home_canvas.coords(self.core.batt_ui[ui_key]["bar"])[3])
+                col, r_col = ("#1db954", "#0e4419") if val >= 70 else (("#88aaff", "#223355") if val >= 30 else ("#ff4444", "#4a1111"))
+                self.core.home_canvas.itemconfig(self.core.batt_ui[ui_key]["bar"], fill=col)
+                self.core.home_canvas.delete(f"range_{ui_key}")
+                if val < 100:
+                    r_bar = self.core.home_canvas.create_rectangle(base_x + int((lower/100.0)*max_width), self.core.home_canvas.coords(self.core.batt_ui[ui_key]["bar"])[1], base_x + int((upper/100.0)*max_width), self.core.home_canvas.coords(self.core.batt_ui[ui_key]["bar"])[3], fill=r_col, outline="", tags=f"range_{ui_key}")
+                    self.core.home_canvas.tag_lower(r_bar, self.core.batt_ui[ui_key]["bar"])
+                self.core.home_canvas.itemconfig(self.core.batt_ui[ui_key]["text"], text=f"~{midpoint}%" if val < 100 else "100%")

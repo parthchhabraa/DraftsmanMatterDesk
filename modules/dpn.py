@@ -11,6 +11,7 @@ class DpnEngine:
         self.core = core
 
     def render_dpn_canvas(self):
+        if not hasattr(self.core, 'dpn_monitor_canvas') or not self.core.dpn_monitor_canvas.winfo_exists(): return
         self.core.dpn_monitor_canvas.delete("all")
         if not self.core.dpn_active:
             self.core.dpn_monitor_canvas.create_text(180, 100, text="Tunnel Array Offline\nWaiting for Core Ignition Sequence...", fill="#444", font=self.core.font_body, justify="center")

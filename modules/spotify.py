@@ -20,34 +20,23 @@ class SpotifyEngine:
 
     def init_session(self, cid, secret, uri, cache):
         if os.path.exists(cache):
-            try: 
-                self.sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
-                    client_id=cid, client_secret=secret, redirect_uri=uri, 
-                    cache_path=cache, open_browser=False, 
-                    scope='user-read-playback-state user-modify-playback-state playlist-read-private'
-                ))
+            try: self.sp = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id=cid, client_secret=secret, redirect_uri=uri, cache_path=cache, open_browser=False, scope='user-read-playback-state user-modify-playback-state playlist-read-private'))
             except Exception: pass
 
     def start_polling(self):
         threading.Thread(target=self._poll_spotify_state, daemon=True).start()
 
     def _sp_play_pause(self):
-        """
-        Toggles the active Spotify remote instance engine playback state.
-        """
         if not self.sp: return
         try:
             pb = self.sp.current_playback()
-            if pb and pb.get('is_playing'): 
-                self.sp.pause_playback()
-            else: 
-                self.sp.start_playback()
+            if pb and pb.get('is_playing'): self.sp.pause_playback()
+            else: self.sp.start_playback()
         except Exception: pass
 
     def _poll_spotify_state(self):
         if not self.sp: return
-        try: 
-            self.playlist_dict = {p['name']: p['uri'] for p in self.sp.current_user_playlists(limit=20).get('items', []) if p}
+        try: self.playlist_dict = {p['name']: p['uri'] for p in self.sp.current_user_playlists(limit=20).get('items', []) if p}
         except Exception: pass
         while True:
             if getattr(self.core, 'vinyl_active', False):

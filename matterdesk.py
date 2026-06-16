@@ -5,14 +5,12 @@ from PIL import Image, ImageTk, ImageDraw
 import firebase_admin
 from firebase_admin import credentials
 
-# Import decoupled specialized engine profiles
 from modules.telemetry import TelemetryEngine
 from modules.study import StudyEngine
 from modules.dpn import DpnEngine
 from modules.bookmarks import BookmarksEngine
 from modules.spotify import SpotifyEngine
 
-# --- System Paths ---
 BACKLIGHT_POWER = '/sys/class/backlight/10-0045/bl_power'
 BACKLIGHT_BRIGHT = '/sys/class/backlight/10-0045/brightness'
 TOUCH_DEVICE = '/dev/input/event4'
@@ -20,7 +18,6 @@ LOGO_IMG_PATH = '/home/st6b/matterdesk/images/logo.png'
 FIREBASE_KEY_PATH = '/home/st6b/matterdesk/serviceAccountKey.json'
 GITHUB_REPO_URL = 'https://github.com/parthchhabraa/DraftsmanMatterDesk.git'
 
-# --- API Context ---
 SPOTIFY_CLIENT_ID = '515b520ddd7b4ed2a33fdd1091c9ef00'
 SPOTIFY_CLIENT_SECRET = 'e24611ecfa1c4be2b28c1d59e40af0b8'
 SPOTIFY_REDIRECT_URI = 'http://127.0.0.1:8080/callback'
@@ -29,7 +26,7 @@ SPOTIFY_CACHE_PATH = '/home/st6b/matterdesk/.cache'
 class MatterDeskCore:
     def __init__(self):
         self.system_logs = []
-        self.log("System Initializing - MatterDesk v5.0 (Stable Master Integration)")
+        self.log("System Initializing - MatterDesk v5.1")
         
         self.root = tk.Tk()
         self.root.overrideredirect(True)
@@ -37,7 +34,7 @@ class MatterDeskCore:
         self.root.geometry("800x480+0+0")
         self.root.configure(bg="#050505", cursor="arrow")
         
-        # --- State Allocations ---
+        # --- State Initialization ---
         self.is_asleep = self.prevent_sleep = self.thermal_panic = False
         self.active_process = None
         self.last_interaction = time.time()
@@ -48,7 +45,6 @@ class MatterDeskCore:
         self.study_job = None
         self.current_subject = tk.StringVar(value="Maths")
         
-        # --- DPN Metrics ---
         self.dpn_active = False
         self.dpn_ssid = "Draftsman DPN"
         self.dpn_passkey = "Draftsman!Crypto!Secure!Core!99"
@@ -57,7 +53,6 @@ class MatterDeskCore:
         self.dpn_client_count = 0
         self.qr_image_tk = None
 
-        # --- Graphics Variables ---
         self.font_header = font.Font(family="Helvetica", size=22, weight="bold")
         self.font_sub = font.Font(family="Helvetica", size=14, weight="bold")
         self.font_body = font.Font(family="Helvetica", size=12)
@@ -65,7 +60,7 @@ class MatterDeskCore:
         self.batt_ui = {}
         self.bg_image = self._generate_gradient(800, 480, (5, 5, 5), (10, 20, 45))
         
-        # --- Instantiate Component Drivers ---
+        # --- Subsystem Allocation ---
         self.telemetry = TelemetryEngine(self)
         self.study = StudyEngine(self)
         self.dpn = DpnEngine(self)
@@ -75,7 +70,7 @@ class MatterDeskCore:
         self._init_firebase()
         self.spotify.init_session(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI, SPOTIFY_CACHE_PATH)
         
-        # --- UI Build Sequencing ---
+        # --- Layout Assembly ---
         self._build_boot_ui()
         self._build_ota_ui()
         self._build_standby_ui()
@@ -92,7 +87,6 @@ class MatterDeskCore:
         self._build_telemetry_bar()
         self._build_thermal_panic_ui()
         
-        # --- Bindings & Execution Threads ---
         self.tap_times = []
         self.root.bind("<Button-1>", self._global_tap_handler, add="+")
         self.nav_to("boot")
@@ -178,6 +172,20 @@ class MatterDeskCore:
         self.ota_bar = self.ota_canvas.create_rectangle(300, 320, 300, 324, fill="#ffffff", outline="")
         self.ota_text = self.ota_canvas.create_text(400, 350, text="Preparing Update...", font=("Helvetica", 12), fill="#aaaaaa")
 
+    def _animate_ota_bar(self):
+        if getattr(self, 'ota_finished', False):
+            self.ota_canvas.coords(self.ota_bar, 300, 320, 500, 324)
+            self.ota_canvas.itemconfig(self.ota_text, text="Restarting Firmware...")
+            return
+        if getattr(self, 'ota_error', False):
+            self.ota_canvas.itemconfig(self.ota_text, text="Verification Failed. Rebooting...", fill="#ff4444")
+            return
+        if not hasattr(self, 'ota_progress'): self.ota_progress = 0
+        if self.ota_progress < 180:
+            self.ota_progress += 2
+            self.ota_canvas.coords(self.ota_bar, 300, 320, 300 + self.ota_progress, 324)
+        self.root.after(50, self._animate_ota_bar)
+
     def _build_telemetry_bar(self):
         f = tk.Frame(self.root, bg="#000000", height=20)
         f.place(x=0, y=460, width=800, height=20)
@@ -256,7 +264,7 @@ class MatterDeskCore:
             ("AirPlay", "#1a1a1a", "#fff", self.launch_uxplay),
             ("Spotify", "#0a2a10", "#1db954", lambda: self.nav_to("spotify")),
             ("Study", "#12123a", "#88aaff", lambda: self.nav_to("study")),
-            ("Network", "#2a1a3a", "#aa88ff", lambda: self._trigger_netscan()),
+            ("Network", "#2a1a3a", "#aa88ff", lambda: self._trigger_netscan())),
             ("Bookmarks", "#3a1a1a", "#ff88aa", lambda: self.nav_to("bookmarks")),
             ("DPN VPN", "#112233", "#00aaff", lambda: self.nav_to("dpn")),
             ("Settings", "#222222", "#ddd", lambda: self.nav_to("settings")),
@@ -312,33 +320,6 @@ class MatterDeskCore:
                 rad = math.radians(i + self.telemetry.sun_angle)
                 self.wx_canvas.create_line(cx + 20 * math.cos(rad), cy + 20 * math.sin(rad), cx + 30 * math.cos(rad), cy + 30 * math.sin(rad), fill="#ffaa00", width=2, tags="sun")
         self.root.after(50, self._animate_weather)
-
-    def _battery_telemetry_loop(self):
-        while True:
-            try:
-                data = db.reference('telemetry/batteries').get() or {}
-                self.root.after(0, lambda d=data: self._update_battery_ui(d))
-            except Exception: pass
-            time.sleep(60)
-
-    def _update_battery_ui(self, data):
-        keys_map = {"iphone": "iphone", "macbook": "mac", "ipad": "ipad"}
-        for ui_key, db_key in keys_map.items():
-            val = data.get(db_key)
-            if val is not None:
-                lower = (val // 10) * 10
-                upper = lower + 9 if lower < 100 else 100
-                midpoint = lower + 5 if lower < 100 else 100
-                base_x, max_width = 480, 240
-                width = int((val / 100.0) * max_width)
-                self.home_canvas.coords(self.batt_ui[ui_key]["bar"], base_x, self.home_canvas.coords(self.batt_ui[ui_key]["bar"])[1], base_x + width, self.home_canvas.coords(self.batt_ui[ui_key]["bar"])[3])
-                col, r_col = ("#1db954", "#0e4419") if val >= 70 else (("#88aaff", "#223355") if val >= 30 else ("#ff4444", "#4a1111"))
-                self.home_canvas.itemconfig(self.batt_ui[ui_key]["bar"], fill=col)
-                self.home_canvas.delete(f"range_{ui_key}")
-                if val < 100:
-                    r_bar = self.home_canvas.create_rectangle(base_x + int((lower/100.0)*max_width), self.home_canvas.coords(self.batt_ui[ui_key]["bar"])[1], base_x + int((upper/100.0)*max_width), self.home_canvas.coords(self.batt_ui[ui_key]["bar"])[3], fill=r_col, outline="", tags=f"range_{ui_key}")
-                    self.home_canvas.tag_lower(r_bar, self.batt_ui[ui_key]["bar"])
-                self.home_canvas.itemconfig(self.batt_ui[ui_key]["text"], text=f"~{midpoint}%" if val < 100 else "100%")
 
     def _build_dpn_ui(self):
         f = tk.Frame(self.root, bg="#0b0f19")
@@ -561,6 +542,13 @@ class MatterDeskCore:
         
         right_frame = tk.Frame(f, bg="#121212")
         right_frame.pack(side="right", fill="both", expand=True, padx=20)
+        self.btn_ota = tk.Button(right_frame, text="UPDATE SYSTEM (GITHUB OTA)", font=self.font_sub, bg="#1a2a4a", fg="#88aaff", bd=0, command=self._exec_ota)
+        self.btn_ota.pack(fill="x", pady=(0, 10), ipady=10)
+        row2 = tk.Frame(right_frame, bg="#121212")
+        row2.pack(fill="x", pady=(0, 10))
+        tk.Button(row2, text="DIAGNOSTICS", font=self.font_sub, bg="#333", fg="#fff", bd=0, command=lambda: self.nav_to("diagnostics")).pack(side="left", fill="x", expand=True, padx=(0,5), ipady=10)
+        tk.Button(row2, text="SYSTEM LOGS", font=self.font_sub, bg="#333", fg="#fff", bd=0, command=lambda: self.nav_to("logs")).pack(side="right", fill="x", expand=True, padx=(5,0), ipady=10)
+        
         self.kbd_container = tk.Frame(right_frame, bg="#121212")
         self.kbd_container.pack(fill="both", expand=True)
         self._build_osk()
@@ -590,11 +578,59 @@ class MatterDeskCore:
         f = tk.Frame(self.root, bg="#121212")
         f.place(x=0, y=0, relwidth=1, relheight=1)
         self.frames["logs"] = f
+        top = tk.Frame(f, bg="#121212", height=40)
+        top.pack(fill="x", padx=10, pady=10)
+        tk.Button(top, text="< BACK", font=self.font_body, bg="#121212", fg="#fff", bd=0, command=lambda: self.nav_to("settings")).pack(side="left")
+        self.txt_logs = tk.Text(f, bg="#050505", fg="#1db954", font=("Courier", 10), bd=0, highlightthickness=0)
+        self.txt_logs.pack(fill="both", expand=True, padx=20, pady=10)
 
     def _build_diagnostics_ui(self):
         f = tk.Frame(self.root, bg="#121212")
         f.place(x=0, y=0, relwidth=1, relheight=1)
         self.frames["diagnostics"] = f
+        top = tk.Frame(f, bg="#121212", height=40)
+        top.pack(fill="x", padx=10, pady=10)
+        tk.Button(top, text="< BACK", font=self.font_body, bg="#121212", fg="#fff", bd=0, command=lambda: self.nav_to("settings")).pack(side="left")
+        btn_frame = tk.Frame(f, bg="#121212")
+        btn_frame.pack(expand=True)
+        tk.Button(btn_frame, text="Touch Calibration", font=self.font_sub, bg="#1a1a1a", fg="#fff", bd=0, command=self._test_touch, width=20).grid(row=0, column=0, padx=10, pady=10, ipady=15)
+        tk.Button(btn_frame, text="Display Integrity", font=self.font_sub, bg="#1a1a1a", fg="#fff", bd=0, command=self._test_display, width=20).grid(row=0, column=1, padx=10, pady=10, ipady=15)
+        tk.Button(btn_frame, text="Network Ping", font=self.font_sub, bg="#1a1a1a", fg="#fff", bd=0, command=self._test_network, width=20).grid(row=1, column=0, padx=10, pady=10, ipady=15)
+        tk.Button(btn_frame, text="Firebase Health", font=self.font_sub, bg="#1a1a1a", fg="#fff", bd=0, command=self._test_firebase, width=20).grid(row=1, column=1, padx=10, pady=10, ipady=15)
+
+    def _test_touch(self):
+        self.nav_to("waiting")
+        c = tk.Canvas(self.frames["waiting"], bg="white")
+        c.place(relwidth=1, relheight=1)
+        def paint(event): c.create_oval(event.x-5, event.y-5, event.x+5, event.y+5, fill="black")
+        c.bind("<B1-Motion>", paint)
+        tk.Button(c, text="EXIT", bg="red", fg="white", bd=0, command=lambda: (c.destroy(), self.nav_to("diagnostics"))).place(x=10, y=10)
+
+    def _test_display(self):
+        colors = ["red", "green", "blue", "white", "black"]
+        self.nav_to("waiting")
+        c = tk.Canvas(self.frames["waiting"])
+        c.place(relwidth=1, relheight=1)
+        def cycle(idx):
+            if idx >= len(colors):
+                c.destroy(); self.nav_to("diagnostics")
+                return
+            c.config(bg=colors[idx])
+            self.root.after(1000, lambda: cycle(idx+1))
+        cycle(0)
+
+    def _test_network(self):
+        try:
+            subprocess.check_output(["ping", "-c", "2", "8.8.8.8"])
+            self.log("Diagnostic Ping Success.")
+        except Exception: self.log("Diagnostic Ping Failed.")
+
+    def _test_firebase(self):
+        if getattr(self, 'firebase_active', False):
+            try:
+                db.reference('ping_test').set({'ts': int(time.time())})
+                self.log("Firebase Connection Verified.")
+            except Exception: self.log("Firebase Write Rule Rejected.")
 
     def wake_display(self):
         if self.is_asleep:
@@ -633,6 +669,26 @@ class MatterDeskCore:
             networks = list(set([n for n in out.split('\n') if n.strip()]))
         except: networks = ["Scan Failed"]
         TouchModal(self.root, "Available Networks", networks, lambda s: self.btn_wifi_sel.config(text=s))
+
+    def _exec_ota(self):
+        self.nav_to("ota")
+        self.ota_progress = 0
+        self.ota_finished = self.ota_error = False
+        self._animate_ota_bar()
+        threading.Thread(target=self._ota_thread, daemon=True).start()
+
+    def _ota_thread(self):
+        try:
+            cwd = "/home/st6b/matterdesk"
+            subprocess.run(["git", "fetch", "origin", "main"], cwd=cwd, check=True)
+            subprocess.run(["git", "reset", "--hard", "origin/main"], cwd=cwd, check=True)
+            self.ota_finished = True
+            time.sleep(1.5)
+            os.system("sudo systemctl restart matterdesk.service")
+        except Exception:
+            self.ota_error = True
+            time.sleep(3)
+            self.root.after(0, lambda: self.nav_to("settings"))
 
     def launch_uxplay(self):
         self.prevent_sleep = True

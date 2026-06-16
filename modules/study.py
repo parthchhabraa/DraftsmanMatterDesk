@@ -1,6 +1,7 @@
 import time
 import datetime
 import random
+import json
 import tkinter as tk
 from firebase_admin import db
 
@@ -66,5 +67,41 @@ class StudyEngine:
     def _push_session(self, subject, duration):
         try:
             db.reference('sessions').push({'subject': subject, 'duration_seconds': duration, 'timestamp': int(time.time())})
-            self.core.root.after(0, self.core._render_github_heatmap)
+            self.core.root.after(0, self.render_github_heatmap)
         except Exception: pass
+
+    def render_github_heatmap(self):
+        if not getattr(self.core, 'firebase_active', False): return
+        try:
+            sessions = db.reference('sessions').get() or {}
+            daily_totals = {}
+            recent_logs = []
+            sorted_keys = sorted(sessions.keys(), key=lambda k: sessions[k].get('timestamp', 0))
+            for k in sorted_keys:
+                data = sessions[k]
+                ts = data.get('timestamp', 0)
+                date_str = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d')
+                daily_totals[date_str] = daily_totals.get(date_str, 0) + data.get('duration_seconds', 0)
+                dur_m = data.get('duration_seconds', 0) // 60
+                recent_logs.append(f"{datetime.datetime.fromtimestamp(ts).strftime('%b %d')} | {data.get('subject', 'Unknown')} ({dur_m}m)")
+            self.core.root.after(0, lambda: self._draw_heatmap_ui(daily_totals, recent_logs[-3:]))
+        except Exception: pass
+
+    def _draw_heatmap_ui(self, daily_totals, recent_logs):
+        if not hasattr(self.core, 'heatmap_canvas') or not self.core.heatmap_canvas.winfo_exists(): return
+        self.core.heatmap_canvas.delete("all")
+        box_size, padding, cols, rows = 12, 3, 20, 7
+        start_date = datetime.datetime.now() - datetime.timedelta(days=(cols * rows) - 1)
+        for c in range(cols):
+            for r in range(rows):
+                current_day = start_date + datetime.timedelta(days=(c * rows) + r)
+                sec = daily_totals.get(current_day.strftime('%Y-%m-%d'), 0)
+                col = "#1a1a1a" if sec == 0 else ("#0e4429" if sec < 1800 else ("#006d32" if sec < 5400 else ("#26a641" if sec < 10800 else "#39d353")))
+                x1 = 10 + (c * (box_size + padding))
+                y1 = 10 + (r * (box_size + padding))
+                self.core.heatmap_canvas.create_rectangle(x1, y1, x1+box_size, y1+box_size, fill=col, outline="")
+        self.core.history_list_canvas.delete("all")
+        y_pos = 10
+        for log in reversed(recent_logs):
+            self.core.history_list_canvas.create_text(10, y_pos, text=log, fill="#888888", font=self.core.font_body, anchor="w")
+            y_pos += 25
