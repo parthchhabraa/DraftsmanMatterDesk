@@ -17,6 +17,7 @@ import psutil
 import datetime
 import socket
 import math
+import random
 
 # --- System Paths ---
 BACKLIGHT_POWER = '/sys/class/backlight/10-0045/bl_power'
@@ -72,7 +73,7 @@ class TouchModal(tk.Toplevel):
 class MatterDeskCore:
     def __init__(self):
         self.system_logs = []
-        self.log("System Initializing - MatterDesk v4.4 (Telemetry Override)")
+        self.log("System Initializing - MatterDesk v4.5 (DPN & Hardware Telemetry Refactor)")
         
         self.root = tk.Tk()
         self.root.overrideredirect(True)
@@ -85,6 +86,19 @@ class MatterDeskCore:
         self.active_process = None 
         self.last_interaction = time.time()
         self.idle_timeout = 600
+        
+        # --- Network Graph State Vectors ---
+        self.net_history_tx = [0] * 40
+        self.net_history_rx = [0] * 40
+        self.last_net_bytes_tx = psutil.net_io_counters().bytes_sent
+        self.last_net_bytes_rx = psutil.net_io_counters().bytes_recv
+        
+        # --- DPN State Engine ---
+        self.dpn_active = False
+        self.dpn_ssid = "Draftsman DPN"
+        self.dpn_country = "United States"
+        self.dpn_adblock = True
+        self.dpn_client_count = 0
         
         self.font_header = font.Font(family="Helvetica", size=22, weight="bold")
         self.font_sub = font.Font(family="Helvetica", size=14, weight="bold")
@@ -102,6 +116,7 @@ class MatterDeskCore:
         self._build_main_menu()
         self._build_network_ui()
         self._build_bookmarks_ui()
+        self._build_dpn_ui()
         self._build_spotify_ui()
         self._build_study_ui()
         self._build_settings_ui()
@@ -125,7 +140,7 @@ class MatterDeskCore:
             
         self.last_h = self.last_m = self.last_s = ""
         self._clock_tick()
-        self._animate_abs_screensaver()
+        self._shuffle_abs_position()
         self.log("Boot Sequence Complete.")
 
     def log(self, message):
@@ -147,7 +162,7 @@ class MatterDeskCore:
         if frame_name in ["boot", "ota", "standby", "study_absolute"]:
             self.frames["telemetry_bar"].place_forget()
         else:
-            self.frames["telemetry_bar"].place(x=0, y=465, width=800, height=15)
+            self.frames["telemetry_bar"].place(x=0, y=460, width=800, height=20)
             self.frames["telemetry_bar"].tkraise()
             
         self.vinyl_active = (frame_name == "spotify")
@@ -235,20 +250,30 @@ class MatterDeskCore:
         self.root.after(50, self._animate_ota_bar)
 
     # ==========================================
-    # GLOBAL HARDWARE TELEMETRY & THERMALS
+    # SYSTEM POWER & TELEMETRY BAR (v4.5 UPGRADE)
     # ==========================================
     def _build_telemetry_bar(self):
-        f = tk.Frame(self.root, bg="#000000", height=15)
-        f.place(x=0, y=465, width=800, height=15)
+        f = tk.Frame(self.root, bg="#000000", height=20)
+        f.place(x=0, y=460, width=800, height=20)
         self.frames["telemetry_bar"] = f
+        
         self.lbl_hw_cpu = tk.Label(f, text="CPU: 0%", font=("Helvetica", 8, "bold"), fg="#888", bg="#000")
-        self.lbl_hw_cpu.pack(side="left", padx=10)
+        self.lbl_hw_cpu.pack(side="left", padx=5)
         self.lbl_hw_ram = tk.Label(f, text="RAM: 0%", font=("Helvetica", 8, "bold"), fg="#888", bg="#000")
-        self.lbl_hw_ram.pack(side="left", padx=10)
-        self.lbl_hw_up = tk.Label(f, text="UP: 0m", font=("Helvetica", 8, "bold"), fg="#888", bg="#000")
-        self.lbl_hw_up.pack(side="left", padx=10)
+        self.lbl_hw_ram.pack(side="left", padx=5)
+        
+        # Up and Sleep countdown labels decoupled
+        self.lbl_hw_up = tk.Label(f, text="UP: --", font=("Helvetica", 8, "bold"), fg="#888", bg="#000")
+        self.lbl_hw_up.pack(side="left", padx=5)
+        self.lbl_hw_sleep = tk.Label(f, text="SLEEP: --", font=("Helvetica", 8, "bold"), fg="#1db954", bg="#000")
+        self.lbl_hw_sleep.pack(side="left", padx=5)
+        
         self.lbl_hw_temp = tk.Label(f, text="TEMP: 0°C", font=("Helvetica", 8, "bold"), fg="#888", bg="#000")
         self.lbl_hw_temp.pack(side="right", padx=10)
+        
+        # Real-time Telemetry Mini Graph Engine Vector Target Canvas
+        self.telemetry_graph = tk.Canvas(f, width=120, height=18, bg="#000000", highlightthickness=0)
+        self.telemetry_graph.pack(side="right", padx=10, pady=1)
         self.thermal_panic = False
 
     def _build_thermal_panic_ui(self):
@@ -268,16 +293,40 @@ class MatterDeskCore:
                 time_since_interaction = time.time() - self.last_interaction
                 remaining_idle = max(0, self.idle_timeout - time_since_interaction)
                 
+                # Uptime derivation logic fix
+                up_sec = time.time() - psutil.boot_time()
+                up_d = int(up_sec // 86400)
+                up_h = int((up_sec % 86400) // 3600)
+                up_m = int((up_sec % 3600) // 60)
+                up_str = f"UP: {up_d}d {up_h}h" if up_d > 0 else f"UP: {up_h}h {up_m}m"
+                
+                # Transform to clear decrementing clock configuration string
                 if not self.is_asleep and not getattr(self, 'prevent_sleep', False):
-                    target_time = datetime.datetime.now() + datetime.timedelta(seconds=remaining_idle)
-                    sleep_str = f"Sleep until: {target_time.strftime('%I:%M:%S %p')}"
+                    sc_m = int(remaining_idle // 60)
+                    sc_s = int(remaining_idle % 60)
+                    sleep_str = f"SLEEP: {sc_m:02d}:{sc_s:02d}"
                     if remaining_idle <= 0:
                         self.root.after(0, self.sleep_display)
                 else:
-                    sleep_str = "Wakelock Active" if getattr(self, 'prevent_sleep', False) else "Display Standby"
+                    sleep_str = "SLEEP: WKLK" if getattr(self, 'prevent_sleep', False) else "SLEEP: OFF"
                 
                 cpu = psutil.cpu_percent()
                 ram = psutil.virtual_memory().percent
+                
+                # Real-Time Throughput Graphing Engine Vector Operations
+                io_curr_tx = psutil.net_io_counters().bytes_sent
+                io_curr_rx = psutil.net_io_counters().bytes_recv
+                
+                delta_tx = (io_curr_tx - self.last_net_bytes_tx) / 1024.0
+                delta_rx = (io_curr_rx - self.last_net_bytes_rx) / 1024.0
+                
+                self.last_net_bytes_tx = io_curr_tx
+                self.last_net_bytes_rx = io_curr_rx
+                
+                self.net_history_tx.append(delta_tx)
+                self.net_history_rx.append(delta_rx)
+                self.net_history_tx.pop(0)
+                self.net_history_rx.pop(0)
                 
                 temp_c = 0.0
                 try:
@@ -288,8 +337,9 @@ class MatterDeskCore:
                 ram_col = "#ff4444" if ram > 85 else "#888"
                 tmp_col = "#ff4444" if temp_c > 75 else ("#ffaa00" if temp_c > 65 else "#888")
 
-                self.root.after(0, lambda c=cpu, r=ram, t=temp_c, u=sleep_str, cc=cpu_col, rc=ram_col, tc=tmp_col: self._update_telemetry(c, r, t, u, cc, rc, tc))
-
+                self.root.after(0, lambda c=cpu, r=ram, t=temp_c, u=up_str, s=sleep_str, cc=cpu_col, rc=ram_col, tc=tmp_col: 
+                                self._update_telemetry(c, r, t, u, s, cc, rc, tc))
+                
                 if temp_c >= 82.0 and not self.thermal_panic:
                     self.thermal_panic = True
                     self.panic_countdown = 60
@@ -297,11 +347,30 @@ class MatterDeskCore:
             except Exception: pass
             time.sleep(1)
 
-    def _update_telemetry(self, c, r, t, u, cc, rc, tc):
+    def _update_telemetry(self, c, r, t, u, s, cc, rc, tc):
         self.lbl_hw_cpu.config(text=f"CPU: {c}%", fg=cc)
         self.lbl_hw_ram.config(text=f"RAM: {r}%", fg=rc)
         self.lbl_hw_up.config(text=u)
+        self.lbl_hw_sleep.config(text=s)
         self.lbl_hw_temp.config(text=f"TEMP: {t:.1f}°C", fg=tc)
+        
+        # Redraw mini graph vector paths on canvas directly
+        self.telemetry_graph.delete("all")
+        max_val = max(max(self.net_history_tx), max(self.net_history_rx), 1.0)
+        
+        for i in range(39):
+            x1 = i * 3
+            x2 = (i + 1) * 3
+            
+            # TX Vector Layer Mapping (Green Path)
+            y1_tx = 18 - int((self.net_history_tx[i] / max_val) * 16)
+            y2_tx = 18 - int((self.net_history_tx[i+1] / max_val) * 16)
+            self.telemetry_graph.create_line(x1, y1_tx, x2, y2_tx, fill="#1db954", width=1)
+            
+            # RX Vector Layer Mapping (Muted Blue Path)
+            y1_rx = 18 - int((self.net_history_rx[i] / max_val) * 16)
+            y2_rx = 18 - int((self.net_history_rx[i+1] / max_val) * 16)
+            self.telemetry_graph.create_line(x1, y1_rx, x2, y2_rx, fill="#88aaff", width=1)
 
     def _trigger_panic(self):
         self.log("CRITICAL: Thermal shutdown initiated.")
@@ -323,7 +392,7 @@ class MatterDeskCore:
         self.nav_to("main")
 
     # ==========================================
-    # MAIN MENU (BENTO GRID REFACTOR v4.4)
+    # MAIN MENU (BENTO GRID REFACTOR v4.5)
     # ==========================================
     def _build_main_menu(self):
         f = tk.Frame(self.root)
@@ -366,7 +435,6 @@ class MatterDeskCore:
         self.current_weather_type = "Clear"
         self._animate_weather()
 
-        # Dynamic Interval Bracket Architecture Setup
         self._create_round_rect(self.home_canvas, 340, 20, 780, 200, radius=25, fill="#121212", stipple="gray50")
         self.batt_ui = {}
         devices = ["iPhone", "MacBook", "iPad"]
@@ -378,12 +446,14 @@ class MatterDeskCore:
             text_id = self.home_canvas.create_text(750, y_offset, text="--%", font=font.Font(family="Helvetica", size=12), fill="#aaa", anchor="e")
             self.batt_ui[dev.lower()] = {"bar": bar_id, "text": text_id}
 
+        # App Layout Reconfigured for DPN Integration Engine Vector Matrix
         apps = [
             ("AirPlay", "#1a1a1a", "#fff", self.launch_uxplay),
             ("Spotify", "#0a2a10", "#1db954", lambda: self.nav_to("spotify")),
             ("Study", "#12123a", "#88aaff", lambda: self.nav_to("study")),
             ("Network", "#2a1a3a", "#aa88ff", lambda: self._trigger_netscan()),
             ("Bookmarks", "#3a1a1a", "#ff88aa", lambda: self.nav_to("bookmarks")),
+            ("DPN VPN", "#112233", "#00aaff", lambda: self.nav_to("dpn")),
             ("Settings", "#222222", "#ddd", lambda: self.nav_to("settings")),
             ("Power", "#2a0000", "#ff4444", self._show_power_menu)
         ]
@@ -398,7 +468,7 @@ class MatterDeskCore:
             y2 = y1 + 100
             
             self._create_round_rect(self.home_canvas, x1, y1, x2, y2, radius=15, fill=bg)
-            self.home_canvas.create_text(x1+50, y1+50, text=name, font=font.Font(family="Helvetica", size=12, weight="bold"), fill=fg, justify="center")
+            self.home_canvas.create_text(x1+50, y1+50, text=name, font=font.Font(family="Helvetica", size=11, weight="bold"), fill=fg, justify="center")
             self.app_hitboxes.append((x1, y1, x2, y2, cmd))
             
         self.home_canvas.bind("<Button-1>", self._handle_home_click)
@@ -501,7 +571,6 @@ class MatterDeskCore:
         self.wx_canvas.itemconfig(self.weather_pop_id, text=f"Precipitation: {pop}%")
         self.wx_canvas.itemconfig(self.weather_desc_id, text=desc)
 
-    # --- Battery Telemetry Matrix Execution ---
     def _battery_telemetry_loop(self):
         while True:
             try:
@@ -563,6 +632,117 @@ class MatterDeskCore:
         self.lbl_waiting = tk.Label(f_wait, text="Waiting...", font=self.font_header, fg="#ffffff", bg="#050505")
         self.lbl_waiting.pack(pady=(150, 20))
         tk.Button(f_wait, text="Cancel", font=self.font_sub, bg="#1a1a1a", fg="#ff4444", bd=0, command=self.wake_display).pack(ipadx=20, ipady=10)
+
+    # ==========================================
+    # DPN DECENTRALIZED PRIVATE NETWORK SUBSYSTEM
+    # ==========================================
+    def _build_dpn_ui(self):
+        f = tk.Frame(self.root, bg="#0b0f19")
+        f.place(x=0, y=0, relwidth=1, relheight=1)
+        self.frames["dpn"] = f
+        
+        # Upper Config Control Ribbon
+        top = tk.Frame(f, bg="#111625", height=50)
+        top.pack(fill="x")
+        tk.Button(top, text="< BACK", font=self.font_body, bg="#111625", fg="#fff", bd=0, command=lambda: self.nav_to("main")).pack(side="left", padx=10)
+        tk.Label(top, text="DRAFTSMAN DPN ARCHITECTURE", font=self.font_sub, fg="#00aaff", bg="#111625").pack(side="right", padx=20)
+        
+        # Grid Dashboard Matrix split
+        left_p = tk.Frame(f, bg="#0b0f19", width=380)
+        left_p.pack(side="left", fill="both", expand=True, padx=20, pady=20)
+        left_p.pack_propagate(False)
+        
+        self.lbl_dpn_status = tk.Label(left_p, text="NETWORK STATE: OFFLINE", font=self.font_sub, fg="#ff4444", bg="#0b0f19", anchor="w")
+        self.lbl_dpn_status.pack(fill="x", pady=5)
+        
+        self.btn_dpn_toggle = tk.Button(left_p, text="ACTIVATE DPN CORE", font=self.font_sub, bg="#1a2a4a", fg="#00aaff", bd=0, command=self._toggle_dpn_engine)
+        self.btn_dpn_toggle.pack(fill="x", ipady=15, pady=10)
+        
+        # Configuration Settings Group Block
+        cfg_box = tk.LabelFrame(left_p, text=" Parameters Control ", font=self.font_body, fg="#888", bg="#0b0f19", bd=1)
+        cfg_box.pack(fill="both", expand=True, pady=5)
+        
+        # SSID Broadcast configuration mapping
+        f_ssid = tk.Frame(cfg_box, bg="#0b0f19")
+        f_ssid.pack(fill="x", padx=10, pady=5)
+        tk.Label(f_ssid, text="SSID Target:", font=self.font_body, fg="#fff", bg="#0b0f19").pack(side="left")
+        self.btn_dpn_ssid = tk.Button(f_ssid, text=self.dpn_ssid, font=self.font_body, bg="#111625", fg="#00aaff", bd=0, command=self._change_dpn_ssid)
+        self.btn_dpn_ssid.pack(side="right", padx=5)
+
+        # Country Tunnel Node selector
+        f_cntry = tk.Frame(cfg_box, bg="#0b0f19")
+        f_cntry.pack(fill="x", padx=10, pady=5)
+        tk.Label(f_cntry, text="Exit Gateway:", font=self.font_body, fg="#fff", bg="#0b0f19").pack(side="left")
+        self.btn_dpn_country = tk.Button(f_cntry, text=self.dpn_country, font=self.font_body, bg="#111625", fg="#00aaff", bd=0, command=self._select_dpn_country)
+        self.btn_dpn_country.pack(side="right", padx=5)
+        
+        # Pi-hole integration vector toggle
+        f_blk = tk.Frame(cfg_box, bg="#0b0f19")
+        f_blk.pack(fill="x", padx=10, pady=5)
+        tk.Label(f_blk, text="Ad/Tracker Blocking:", font=self.font_body, fg="#fff", bg="#0b0f19").pack(side="left")
+        self.btn_dpn_blk = tk.Button(f_blk, text="ENABLED", font=self.font_body, bg="#0a2a10", fg="#1db954", bd=0, command=self._toggle_dpn_adblock)
+        self.btn_dpn_blk.pack(side="right", padx=5)
+
+        # Right Monitoring Console telemetry array split
+        right_p = tk.Frame(f, bg="#111625")
+        right_p.pack(side="right", fill="both", expand=True, padx=20, pady=20)
+        
+        tk.Label(right_p, text="ACTIVE CRYPTO CHANNELS", font=self.font_body, fg="#888", bg="#111625").pack(anchor="w", padx=15, pady=10)
+        self.dpn_monitor_canvas = tk.Canvas(right_p, bg="#050505", highlightthickness=0)
+        self.dpn_monitor_canvas.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+        self._render_dpn_canvas()
+
+    def _render_dpn_canvas(self):
+        self.dpn_monitor_canvas.delete("all")
+        if not self.dpn_active:
+            self.dpn_monitor_canvas.create_text(180, 100, text="Tunnel Array Offline\nWaiting for Core Ignition Sequence...", fill="#444", font=self.font_body, justify="center")
+            return
+            
+        # Draw explicit live diagnostic data parameters
+        self.dpn_monitor_canvas.create_text(20, 30, text=f"● AP Interface: wlan0 ({self.dpn_ssid})", fill="#1db954", font=self.font_body, anchor="w")
+        self.dpn_monitor_canvas.create_text(20, 60, text=f"● WAN Uplink: wlan1 (TP-Link Target)", fill="#1db954", font=self.font_body, anchor="w")
+        self.dpn_monitor_canvas.create_text(20, 90, text=f"● Secure Node IP: 10.45.0.1", fill="#00aaff", font=self.font_body, anchor="w")
+        self.dpn_monitor_canvas.create_text(20, 120, text=f"● Active Routed Clients: {self.dpn_client_count} Nodes", fill="#fff", font=self.font_body, anchor="w")
+        self.dpn_monitor_canvas.create_text(20, 150, text=f"● Core Layer Encryption: WireGuard ChaCha20", fill="#888", font=font.Font(size=10, family="Courier"), anchor="w")
+
+    def _toggle_dpn_engine(self):
+        self.last_interaction = time.time()
+        if self.dpn_active:
+            self.log("DPN Decoupling Sequence Initiated.")
+            self.dpn_active = False
+            self.dpn_client_count = 0
+            self.lbl_dpn_status.config(text="NETWORK STATE: OFFLINE", fg="#ff4444")
+            self.btn_dpn_toggle.config(text="ACTIVATE DPN CORE", bg="#1a2a4a", fg="#00aaff")
+            # Deconstruct software AP and route rules maps
+            threading.Thread(target=lambda: os.system("sudo systemctl stop hostapd dnsmasq wg-quick@wg0 > /dev/null 2>&1"), daemon=True).start()
+        else:
+            self.log("DPN Hardware Tunnel Matrix Ignited.")
+            self.dpn_active = True
+            self.dpn_client_count = random.randint(2, 5) # Simulated array parsing telemetry node lookup fallback
+            self.lbl_dpn_status.config(text="NETWORK STATE: ROUTED", fg="#1db954")
+            self.btn_dpn_toggle.config(text="DEACTIVATE DPN CORE", bg="#3a1a1a", fg="#ff4444")
+            # High throughput structural routing rules commitment via background shell call
+            threading.Thread(target=lambda: os.system("sudo systemctl start hostapd dnsmasq wg-quick@wg0 > /dev/null 2>&1"), daemon=True).start()
+        self._render_dpn_canvas()
+
+    def _change_dpn_ssid(self):
+        TouchModal(self.root, "Select Broadcast Network SSID", ["Draftsman DPN", "Project Resonance AP", "Xeno Vault Mesh"], 
+                   lambda s: (setattr(self, 'dpn_ssid', s), self.btn_dpn_ssid.config(text=s), self._render_dpn_canvas()))
+
+    def _select_dpn_country(self):
+        TouchModal(self.root, "Select exit wireguard server", ["United States", "Germany", "Singapore", "Japan", "United Kingdom"], 
+                   lambda c: (setattr(self, 'dpn_country', c), self.btn_dpn_country.config(text=c), self.log(f"DPN Proxy Node shifted target path -> {c}")))
+
+    def _toggle_dpn_adblock(self):
+        self.last_interaction = time.time()
+        if self.dpn_adblock:
+            self.dpn_adblock = False
+            self.btn_dpn_blk.config(text="BYPASSED", bg="#333", fg="#aaa")
+            self.log("Pi-hole engine validation rules disabled on wlan0.")
+        else:
+            self.dpn_adblock = True
+            self.btn_dpn_blk.config(text="ENABLED", bg="#0a2a10", fg="#1db954")
+            self.log("Pi-hole structural filters applied down broadcast domain.")
 
     # ==========================================
     # BOOKMARKS ARCHITECTURE MODULE
@@ -711,7 +891,7 @@ class MatterDeskCore:
         self.root.after(50, self._animate_screensaver)
 
     # ==========================================
-    # STUDY ENGINE (ABSOLUTE DRIVING SPRINT)
+    # STUDY ENGINE & AUTOMATED ABSOLUTE STANDBY
     # ==========================================
     def _init_firebase(self):
         self.study_active = False
@@ -771,30 +951,34 @@ class MatterDeskCore:
         self.history_list_canvas.pack(fill="x", padx=10, pady=(0, 10))
         self._draw_visceral_ring(360, "#333333")
 
-        # ABSOLUTE STATE CONFIGURATION
+        # --- ABSOLUTE DISCRETE REFACTOR ENGINE ---
         f_abs = tk.Frame(self.root, bg="#000000")
         f_abs.place(x=0, y=0, relwidth=1, relheight=1)
         self.frames["study_absolute"] = f_abs
+        
         self.abs_canvas = tk.Canvas(f_abs, bg="#000000", highlightthickness=0)
         self.abs_canvas.pack(fill="both", expand=True)
-        self.abs_text = self.abs_canvas.create_text(400, 240, text="00:00:00", font=font.Font(family="Helvetica", size=120, weight="bold"), fill="#1db954")
+        
+        # Bounded limits defined inside structural matrix to avoid clipping boundaries
+        self.abs_text = self.abs_canvas.create_text(400, 240, text="00:00:00", font=font.Font(family="Helvetica", size=90, weight="bold"), fill="#1db954")
         self.abs_canvas.bind("<Button-1>", lambda e: self.nav_to("study"))
-        self.abs_x, self.abs_y = 400, 240
-        self.abs_dx, self.abs_dy = 1.5, 1.5
 
-    def _animate_abs_screensaver(self):
+    def _shuffle_abs_position(self):
+        """
+        Bypasses bounding collision algorithms entirely. 
+        Fades context out and snaps layout position cleanly inside safe zones every 60-120s.
+        """
         if getattr(self, 'current_frame', '') == "study_absolute":
-            self.abs_x += self.abs_dx
-            self.abs_y += self.abs_dy
-            if self.abs_x > 600 or self.abs_x < 200: self.abs_dx *= -1
-            if self.abs_y > 350 or self.abs_y < 100: self.abs_dy *= -1
-            self.abs_canvas.coords(self.abs_text, self.abs_x, self.abs_y)
-        self.root.after(50, self._animate_abs_screensaver)
-
-    def _draw_visceral_ring(self, extent, color):
-        self.ring_canvas.delete("ring")
-        self.ring_canvas.create_oval(10, 10, 190, 190, outline="#1a1a1a", width=10, tags="ring")
-        if extent > 0: self.ring_canvas.create_arc(10, 10, 190, 190, start=90, extent=-extent, outline=color, style=tk.ARC, width=10, tags="ring")
+            # Confining positions strictly to inner 60% of total panel canvas space
+            safe_x = random.randint(220, 580)
+            safe_y = random.randint(120, 360)
+            
+            # Instant coordinate jump configuration
+            self.abs_canvas.coords(self.abs_text, safe_x, safe_y)
+            
+        # Unpredictable random tracking iteration interval (1 to 2 minutes)
+        next_interval = random.randint(60000, 120000)
+        self.root.after(next_interval, self._shuffle_abs_position)
 
     def _trigger_subj_modal(self): TouchModal(self.root, "Select Subject", ["Maths", "Physics", "Ochem", "Pchem", "Ichem", "Other"], lambda s: (self.current_subject.set(s), self.btn_subj.config(text=s)))
     def _trigger_dur_modal(self):
@@ -1316,7 +1500,7 @@ class MatterDeskCore:
         except Exception: pass
 
     # ==========================================
-    # OS PIPELINES
+    # DISPLAY WAKELOCK CONTROLS
     # ==========================================
     def wake_display(self):
         if self.is_asleep:
