@@ -44,8 +44,8 @@ COUNTDOWN_FILE = f'{DATA_DIR}/countdown.json'
 # EDIT THESE TWO LINES to match your actual hardware if the guess below is wrong.
 # DPN_AP_IFACE  = the interface that BROADCASTS the DPN hotspot (recommend: your TP-Link adapter)
 # DPN_WAN_IFACE = the interface that connects OUT to your home router (recommend: the Pi's onboard wifi)
-DPN_AP_IFACE = 'wlan1'
-DPN_WAN_IFACE = 'wlan0'
+DPN_AP_IFACE = 'wlan0'
+DPN_WAN_IFACE = 'wlan1'
 WG_IFACE = 'wg0'
 HOSTAPD_CONF = '/etc/hostapd/hostapd.conf'
 DNSMASQ_CONF = '/etc/dnsmasq.d/dpn.conf'
