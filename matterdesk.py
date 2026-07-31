@@ -33,6 +33,43 @@ SPOTIFY_CLIENT_SECRET = 'e24611ecfa1c4be2b28c1d59e40af0b8'
 SPOTIFY_REDIRECT_URI = 'http://127.0.0.1:8080/callback'
 SPOTIFY_CACHE_PATH = '/home/st6b/matterdesk/.cache'
 
+# --- Local Data Files (new apps) ---
+DATA_DIR = '/home/st6b/matterdesk/data'
+NOTES_FILE = f'{DATA_DIR}/notes.json'
+FLASHCARDS_FILE = f'{DATA_DIR}/flashcards.json'
+TASKS_FILE = f'{DATA_DIR}/tasks.json'
+COUNTDOWN_FILE = f'{DATA_DIR}/countdown.json'
+
+# --- DPN / Network Hardware Configuration ---
+# EDIT THESE TWO LINES to match your actual hardware if the guess below is wrong.
+# DPN_AP_IFACE  = the interface that BROADCASTS the DPN hotspot (recommend: your TP-Link adapter)
+# DPN_WAN_IFACE = the interface that connects OUT to your home router (recommend: the Pi's onboard wifi)
+DPN_AP_IFACE = 'wlan1'
+DPN_WAN_IFACE = 'wlan0'
+WG_IFACE = 'wg0'
+HOSTAPD_CONF = '/etc/hostapd/hostapd.conf'
+DNSMASQ_CONF = '/etc/dnsmasq.d/dpn.conf'
+DNSMASQ_LEASES = '/var/lib/misc/dnsmasq.leases'
+
+# Very small best-effort OUI -> vendor table for the network mapper. Not exhaustive.
+OUI_VENDORS = {
+    "B8:27:EB": "Raspberry Pi Foundation", "DC:A6:32": "Raspberry Pi Foundation", "E4:5F:01": "Raspberry Pi Foundation",
+    "D8:3A:DD": "Raspberry Pi Foundation", "28:CD:C1": "Raspberry Pi Foundation",
+    "AC:84:C6": "TP-Link", "50:C7:BF": "TP-Link", "C4:6E:1F": "TP-Link", "A4:2B:B0": "TP-Link",
+    "F0:18:98": "Apple", "3C:22:FB": "Apple", "AC:BC:32": "Apple", "40:B0:34": "Apple", "00:16:CB": "Apple",
+    "94:B8:6D": "Samsung", "5C:0A:5B": "Samsung", "A0:07:98": "Samsung",
+    "F4:F5:D8": "Google", "00:1A:11": "Google",
+    "3C:5A:B4": "Google (Nest)", "18:B4:30": "Google (Nest)",
+}
+
+def guess_vendor(mac):
+    try:
+        prefix = mac.upper()[0:8]
+        return OUI_VENDORS.get(prefix, "Unknown")
+    except Exception:
+        return "Unknown"
+
+
 class TouchModal(tk.Toplevel):
     def __init__(self, parent, title, options, callback):
         super().__init__(parent)
@@ -70,10 +107,67 @@ class TouchModal(tk.Toplevel):
         self.callback(option)
         self.destroy()
 
+
+class ActiveTextProxy:
+    """Lets one on-screen keyboard type into whichever of several Text widgets was last tapped."""
+    def __init__(self, get_active):
+        self.get_active = get_active
+
+    def insert(self, index, text):
+        w = self.get_active()
+        w.insert(tk.INSERT if hasattr(w, 'index') else tk.END, text)
+
+    def delete(self, a, b=None):
+        w = self.get_active()
+        try:
+            w.delete("insert-1c", "insert")
+        except Exception:
+            pass
+
+
+class FlashcardModal(tk.Toplevel):
+    def __init__(self, root, app, on_save):
+        super().__init__(root)
+        self.overrideredirect(True)
+        self.geometry("800x480+0+0")
+        self.configure(bg="#050505")
+        self.attributes('-topmost', True)
+        self.on_save = on_save
+
+        tk.Label(self, text="New Flashcard", font=font.Font(size=18, weight="bold"), fg="#88aaff", bg="#050505").pack(pady=(15, 5))
+        tk.Label(self, text="Front (Question):", fg="#fff", bg="#050505", font=app.font_body).pack(anchor="w", padx=20)
+        self.front = tk.Text(self, height=3, bg="#111111", fg="#fff", font=app.font_body)
+        self.front.pack(fill="x", padx=20, pady=5)
+        tk.Label(self, text="Back (Answer):", fg="#fff", bg="#050505", font=app.font_body).pack(anchor="w", padx=20)
+        self.back = tk.Text(self, height=3, bg="#111111", fg="#fff", font=app.font_body)
+        self.back.pack(fill="x", padx=20, pady=5)
+
+        self.active_target = self.front
+        self.front.bind("<Button-1>", lambda e: setattr(self, 'active_target', self.front))
+        self.back.bind("<Button-1>", lambda e: setattr(self, 'active_target', self.back))
+
+        kbd = tk.Frame(self, bg="#050505")
+        kbd.pack(fill="both", expand=True, padx=20, pady=5)
+        proxy = ActiveTextProxy(lambda: self.active_target)
+        app._build_generic_osk(kbd, proxy)
+
+        btn_row = tk.Frame(self, bg="#050505")
+        btn_row.pack(fill="x", padx=20, pady=10)
+        tk.Button(btn_row, text="SAVE CARD", font=app.font_sub, bg="#0a2a10", fg="#1db954", bd=0, command=self._save).pack(side="left", ipadx=20, ipady=10)
+        tk.Button(btn_row, text="CANCEL", font=app.font_sub, bg="#2a0000", fg="#ff4444", bd=0, command=self.destroy).pack(side="right", ipadx=20, ipady=10)
+
+    def _save(self):
+        f_txt = self.front.get("1.0", "end-1c").strip()
+        b_txt = self.back.get("1.0", "end-1c").strip()
+        if f_txt and b_txt:
+            self.on_save(f_txt, b_txt)
+        self.destroy()
+
+
 class MatterDeskCore:
     def __init__(self):
         self.system_logs = []
-        self.log("System Initializing - MatterDesk v4.5 (Stable Master Integration)")
+        self.log("System Initializing - MatterDesk v5.0 (Expanded Deck + Real DPN/Netmap)")
         
         self.root = tk.Tk()
         self.root.overrideredirect(True)
@@ -103,6 +197,14 @@ class MatterDeskCore:
         self.dpn_country = "United States"
         self.dpn_adblock = True
         self.dpn_client_count = 0
+        self.dpn_clients = []
+        self.dpn_force_vpn = False
+        self.dpn_tx_rate = 0.0
+        self.dpn_rx_rate = 0.0
+        
+        # --- Network Mapper State ---
+        self.blocked_macs = set()
+        self.net_autoscan = True
         
         # --- Keyboard Modification Maps ---
         self.caps_lock_active = False
@@ -122,6 +224,8 @@ class MatterDeskCore:
         self.frames = {}
         self.bg_image = self._generate_gradient(800, 480, (5, 5, 5), (10, 20, 45))
         
+        os.makedirs(DATA_DIR, exist_ok=True)
+        
         # ==========================================
         # 2. SUBSYSTEM INTERFACE CONNECTIVITY
         # ==========================================
@@ -140,6 +244,10 @@ class MatterDeskCore:
         self._build_dpn_ui()
         self._build_spotify_ui()
         self._build_study_ui()
+        self._build_notes_ui()
+        self._build_flashcards_ui()
+        self._build_tasks_ui()
+        self._build_countdown_ui()
         self._build_settings_ui()
         self._build_logs_ui()
         self._build_diagnostics_ui()
@@ -159,6 +267,8 @@ class MatterDeskCore:
         threading.Thread(target=self.touch_listener, daemon=True).start()
         threading.Thread(target=self._hardware_telemetry_loop, daemon=True).start()
         threading.Thread(target=self._weather_telemetry_loop, daemon=True).start()
+        threading.Thread(target=self._dpn_telemetry_loop, daemon=True).start()
+        threading.Thread(target=self._network_autoscan_loop, daemon=True).start()
         if getattr(self, 'firebase_active', False):
             threading.Thread(target=self._battery_telemetry_loop, daemon=True).start()
             
@@ -194,6 +304,8 @@ class MatterDeskCore:
             self._animate_vinyl()
         if frame_name == "study" and getattr(self, 'firebase_active', False): 
             self._render_github_heatmap()
+        if frame_name == "countdown":
+            self._refresh_countdown()
 
     def _generate_gradient(self, w, h, color1, color2):
         img = Image.new("RGB", (w, h))
@@ -218,6 +330,70 @@ class MatterDeskCore:
             self.tap_times.clear()
             if not self.is_asleep:
                 self.sleep_display()
+
+    # ==========================================
+    # GENERIC HELPERS: JSON storage + reusable on-screen keyboard
+    # ==========================================
+    def _load_json(self, path, default):
+        try:
+            if os.path.exists(path):
+                with open(path) as f:
+                    return json.load(f)
+        except Exception as e:
+            self.log(f"JSON load error {path}: {e}")
+        return default
+
+    def _save_json(self, path, data):
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, 'w') as f:
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            self.log(f"JSON save error {path}: {e}")
+
+    def _build_generic_osk(self, container, target_widget):
+        """A compact on-screen keyboard that types into any Text widget (or ActiveTextProxy)."""
+        keys = [
+            ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
+            ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
+            ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'DEL'],
+            ['CAPS', 'z', 'x', 'c', 'v', 'b', 'n', 'm', 'SPACE', 'ENTER']
+        ]
+        state = {"caps": False}
+
+        def press(k):
+            self.last_interaction = time.time()
+            if k == "DEL":
+                target_widget.delete("insert-1c", "insert")
+            elif k == "CAPS":
+                state["caps"] = not state["caps"]
+                rebuild()
+            elif k == "SPACE":
+                target_widget.insert(tk.INSERT, " ")
+            elif k == "ENTER":
+                target_widget.insert(tk.INSERT, "\n")
+            else:
+                ch = k.upper() if state["caps"] else k
+                target_widget.insert(tk.INSERT, ch)
+
+        def rebuild():
+            for w in container.winfo_children():
+                w.destroy()
+            for r, row in enumerate(keys):
+                container.rowconfigure(r, weight=1)
+                for c, key in enumerate(row):
+                    container.columnconfigure(c, weight=1)
+                    bg, fg = "#1a1a1a", "#ffffff"
+                    if key == "CAPS":
+                        bg = "#1a2a4a" if state["caps"] else "#1a1a1a"
+                        fg = "#00aaff" if state["caps"] else "#ffffff"
+                    if key == "DEL":
+                        bg, fg = "#330000", "#ff4444"
+                    label = key.upper() if (state["caps"] and len(key) == 1) else key
+                    btn = tk.Button(container, text=label, font=font.Font(size=11, weight="bold"), bg=bg, fg=fg, bd=0,
+                                     activebackground="#444", command=lambda k=key: press(k))
+                    btn.grid(row=r, column=c, sticky="nsew", padx=1, pady=1)
+        rebuild()
 
     # ==========================================
     # macOS STYLE BOOT & OTA UX
@@ -407,7 +583,7 @@ class MatterDeskCore:
             self.root.after(1000, self._panic_tick)
 
     # ==========================================
-    # MAIN MENU BENTO DESIGN
+    # MAIN MENU BENTO DESIGN (12-tile grid)
     # ==========================================
     def _build_main_menu(self):
         f = tk.Frame(self.root)
@@ -461,6 +637,7 @@ class MatterDeskCore:
             text_id = self.home_canvas.create_text(750, y_offset, text="--%", font=font.Font(family="Helvetica", size=12), fill="#aaa", anchor="e")
             self.batt_ui[dev.lower()] = {"bar": bar_id, "text": text_id}
 
+        # 12-tile app grid: 4 columns x 3 rows, fits below the battery card and above the telemetry bar.
         apps = [
             ("AirPlay", "#1a1a1a", "#fff", self.launch_uxplay),
             ("Spotify", "#0a2a10", "#1db954", lambda: self.nav_to("spotify")),
@@ -468,21 +645,29 @@ class MatterDeskCore:
             ("Network", "#2a1a3a", "#aa88ff", lambda: self._trigger_netscan()),
             ("Bookmarks", "#3a1a1a", "#ff88aa", lambda: self.nav_to("bookmarks")),
             ("DPN VPN", "#112233", "#00aaff", lambda: self.nav_to("dpn")),
+            ("Notes", "#2a2a10", "#ffcc66", lambda: self.nav_to("notes")),
+            ("Flashcards", "#0a0a2a", "#88aaff", lambda: self.nav_to("flashcards")),
+            ("Tasks", "#0a1a0a", "#1db954", lambda: self.nav_to("tasks")),
+            ("Countdown", "#2a0a0a", "#ff8888", lambda: self.nav_to("countdown")),
             ("Settings", "#222222", "#ddd", lambda: self.nav_to("settings")),
             ("Power", "#2a0000", "#ff4444", self._show_power_menu)
         ]
         
         self.app_hitboxes = []
+        cols = 4
+        tile_w, tile_h = 96, 68
+        gap_x, gap_y = 8, 8
+        start_x, start_y = 340, 220
         for i, (name, bg, fg, cmd) in enumerate(apps):
-            col = i % 4
-            row = i // 4
-            x1 = 340 + (col * 110)
-            y1 = 220 + (row * 110)
-            x2 = x1 + 100
-            y2 = y1 + 100
+            col = i % cols
+            row = i // cols
+            x1 = start_x + col * (tile_w + gap_x)
+            y1 = start_y + row * (tile_h + gap_y)
+            x2 = x1 + tile_w
+            y2 = y1 + tile_h
             
-            self._create_round_rect(self.home_canvas, x1, y1, x2, y2, radius=15, fill=bg)
-            self.home_canvas.create_text(x1+50, y1+50, text=name, font=font.Font(family="Helvetica", size=11, weight="bold"), fill=fg, justify="center")
+            self._create_round_rect(self.home_canvas, x1, y1, x2, y2, radius=12, fill=bg)
+            self.home_canvas.create_text((x1+x2)//2, (y1+y2)//2, text=name, font=font.Font(family="Helvetica", size=10, weight="bold"), fill=fg, justify="center")
             self.app_hitboxes.append((x1, y1, x2, y2, cmd))
             
         self.home_canvas.bind("<Button-1>", self._handle_home_click)
@@ -648,7 +833,7 @@ class MatterDeskCore:
         tk.Button(f_wait, text="Cancel", font=self.font_sub, bg="#1a1a1a", fg="#ff4444", bd=0, command=self.wake_display).pack(ipadx=20, ipady=10)
 
     # ==========================================
-    # DPN DECENTRALIZED PRIVATE NETWORK SUBSYSTEM
+    # DPN DECENTRALIZED PRIVATE NETWORK SUBSYSTEM (now functional)
     # ==========================================
     def _build_dpn_ui(self):
         f = tk.Frame(self.root, bg="#0b0f19")
@@ -691,6 +876,15 @@ class MatterDeskCore:
         self.btn_dpn_blk = tk.Button(f_blk, text="ENABLED", font=self.font_body, bg="#0a2a10", fg="#1db954", bd=0, command=self._toggle_dpn_adblock)
         self.btn_dpn_blk.pack(side="right", padx=5)
 
+        f_vpn = tk.Frame(cfg_box, bg="#0b0f19")
+        f_vpn.pack(fill="x", padx=10, pady=5)
+        tk.Label(f_vpn, text="Force Traffic via WireGuard:", font=self.font_body, fg="#fff", bg="#0b0f19").pack(side="left")
+        self.btn_dpn_forcevpn = tk.Button(f_vpn, text="OFF", font=self.font_body, bg="#333333", fg="#aaaaaa", bd=0, command=self._toggle_force_vpn)
+        self.btn_dpn_forcevpn.pack(side="right", padx=5)
+
+        tk.Label(cfg_box, text=f"AP iface: {DPN_AP_IFACE}   WAN iface: {DPN_WAN_IFACE}\n(edit at top of matterdesk.py if wrong)",
+                 font=font.Font(size=9), fg="#555", bg="#0b0f19", justify="left").pack(anchor="w", padx=10, pady=(10, 0))
+
         right_p = tk.Frame(f, bg="#111625")
         right_p.pack(side="right", fill="both", expand=True, padx=20, pady=20)
         
@@ -704,30 +898,154 @@ class MatterDeskCore:
         if not self.dpn_active:
             self.dpn_monitor_canvas.create_text(180, 100, text="Tunnel Array Offline\nWaiting for Core Ignition Sequence...", fill="#444", font=self.font_body, justify="center")
             return
-            
-        self.dpn_monitor_canvas.create_text(20, 30, text=f"● AP Interface: wlan0 ({self.dpn_ssid})", fill="#1db954", font=self.font_body, anchor="w")
-        self.dpn_monitor_canvas.create_text(20, 60, text=f"● WAN Uplink: wlan1 (TP-Link Target)", fill="#1db954", font=self.font_body, anchor="w")
-        self.dpn_monitor_canvas.create_text(20, 90, text=f"● Secure Node IP: 10.45.0.1", fill="#00aaff", font=self.font_body, anchor="w")
-        self.dpn_monitor_canvas.create_text(20, 120, text=f"● Active Routed Clients: {self.dpn_client_count} Nodes", fill="#fff", font=self.font_body, anchor="w")
-        self.dpn_monitor_canvas.create_text(20, 150, text=f"● Core Layer Encryption: WireGuard ChaCha20", fill="#888", font=font.Font(size=10, family="Courier"), anchor="w")
+
+        uplink = WG_IFACE if self.dpn_force_vpn else DPN_WAN_IFACE
+        self.dpn_monitor_canvas.create_text(20, 25, text=f"● AP Interface: {DPN_AP_IFACE} ({self.dpn_ssid})", fill="#1db954", font=self.font_body, anchor="w")
+        self.dpn_monitor_canvas.create_text(20, 50, text=f"● WAN Uplink: {uplink}", fill="#1db954", font=self.font_body, anchor="w")
+        self.dpn_monitor_canvas.create_text(20, 75, text="● Secure Node IP: 10.45.0.1", fill="#00aaff", font=self.font_body, anchor="w")
+        self.dpn_monitor_canvas.create_text(20, 100, text=f"● Throughput: ↑{self.dpn_tx_rate:.1f} KB/s   ↓{self.dpn_rx_rate:.1f} KB/s", fill="#fff", font=self.font_body, anchor="w")
+        self.dpn_monitor_canvas.create_text(20, 130, text=f"Active Clients ({self.dpn_client_count}):", fill="#888", font=self.font_sub, anchor="w")
+        y = 155
+        for c in self.dpn_clients[:6]:
+            self.dpn_monitor_canvas.create_text(30, y, text=f"{c['host']:<16} {c['ip']:<14} {c['mac']}", fill="#aaaaaa", font=font.Font(family="Courier", size=10), anchor="w")
+            y += 22
+        if not self.dpn_clients:
+            self.dpn_monitor_canvas.create_text(30, y, text="No clients associated yet.", fill="#555", font=self.font_body, anchor="w")
 
     def _toggle_dpn_engine(self):
         self.last_interaction = time.time()
         if self.dpn_active:
             self.log("DPN Decoupling Sequence Initiated.")
             self.dpn_active = False
-            self.dpn_client_count = 0
-            self.lbl_dpn_status.config(text="NETWORK STATE: OFFLINE", fg="#ff4444")
+            self.lbl_dpn_status.config(text="NETWORK STATE: STOPPING...", fg="#ffaa00")
             self.btn_dpn_toggle.config(text="ACTIVATE DPN CORE", bg="#1a2a4a", fg="#00aaff")
-            threading.Thread(target=lambda: os.system("sudo systemctl stop hostapd dnsmasq wg-quick@wg0 > /dev/null 2>&1"), daemon=True).start()
+            threading.Thread(target=self._dpn_stop_worker, daemon=True).start()
         else:
-            self.log("DPN Hardware Tunnel Matrix Ignited.")
+            self.lbl_dpn_status.config(text="NETWORK STATE: STARTING...", fg="#ffaa00")
+            self.btn_dpn_toggle.config(text="STARTING...", bg="#333333", fg="#aaaaaa")
+            threading.Thread(target=self._dpn_start_worker, daemon=True).start()
+
+    def _write_dpn_configs(self):
+        """Generates hostapd/dnsmasq config for the AP interface. Requires hostapd+dnsmasq installed."""
+        hostapd_conf = (
+            f"interface={DPN_AP_IFACE}\n"
+            "driver=nl80211\n"
+            f"ssid={self.dpn_ssid}\n"
+            "hw_mode=g\n"
+            "channel=6\n"
+            "wmm_enabled=1\n"
+            "macaddr_acl=0\n"
+            "auth_algs=1\n"
+            "ignore_broadcast_ssid=0\n"
+            "wpa=2\n"
+            "wpa_passphrase=draftsmandpn123\n"
+            "wpa_key_mgmt=WPA-PSK\n"
+            "rsn_pairwise=CCMP\n"
+        )
+        with open('/tmp/dpn_hostapd.conf', 'w') as fh:
+            fh.write(hostapd_conf)
+        os.system(f"sudo cp /tmp/dpn_hostapd.conf {HOSTAPD_CONF}")
+
+        dnsmasq_conf = (
+            f"interface={DPN_AP_IFACE}\n"
+            "dhcp-range=10.45.0.10,10.45.0.100,12h\n"
+            "dhcp-option=3,10.45.0.1\n"
+            "dhcp-option=6,10.45.0.1\n"
+        )
+        if self.dpn_adblock:
+            dnsmasq_conf += "address=/doubleclick.net/0.0.0.0\naddress=/googlesyndication.com/0.0.0.0\naddress=/googleadservices.com/0.0.0.0\n"
+        with open('/tmp/dpn_dnsmasq.conf', 'w') as fh:
+            fh.write(dnsmasq_conf)
+        os.system(f"sudo cp /tmp/dpn_dnsmasq.conf {DNSMASQ_CONF}")
+
+        os.system(f"sudo ip addr flush dev {DPN_AP_IFACE} > /dev/null 2>&1")
+        os.system(f"sudo ip addr add 10.45.0.1/24 dev {DPN_AP_IFACE} > /dev/null 2>&1")
+        os.system(f"sudo ip link set {DPN_AP_IFACE} up > /dev/null 2>&1")
+        self.log("DPN hostapd/dnsmasq configs written and applied.")
+
+    def _apply_dpn_nat(self, enable):
+        uplink = WG_IFACE if self.dpn_force_vpn else DPN_WAN_IFACE
+        if enable:
+            os.system("sudo sysctl -w net.ipv4.ip_forward=1 > /dev/null 2>&1")
+            os.system(f"sudo iptables -t nat -A POSTROUTING -o {uplink} -j MASQUERADE")
+            os.system(f"sudo iptables -A FORWARD -i {DPN_AP_IFACE} -o {uplink} -j ACCEPT")
+            os.system(f"sudo iptables -A FORWARD -i {uplink} -o {DPN_AP_IFACE} -m state --state RELATED,ESTABLISHED -j ACCEPT")
+        else:
+            os.system(f"sudo iptables -t nat -D POSTROUTING -o {uplink} -j MASQUERADE > /dev/null 2>&1")
+            os.system(f"sudo iptables -D FORWARD -i {DPN_AP_IFACE} -o {uplink} -j ACCEPT > /dev/null 2>&1")
+            os.system(f"sudo iptables -D FORWARD -i {uplink} -o {DPN_AP_IFACE} -m state --state RELATED,ESTABLISHED -j ACCEPT > /dev/null 2>&1")
+
+    def _dpn_start_worker(self):
+        try:
+            self._write_dpn_configs()
+            os.system("sudo systemctl unmask hostapd > /dev/null 2>&1")
+            os.system("sudo systemctl restart dnsmasq")
+            os.system("sudo systemctl restart hostapd")
+            if self.dpn_force_vpn:
+                os.system(f"sudo wg-quick up {WG_IFACE} > /dev/null 2>&1")
+            self._apply_dpn_nat(True)
             self.dpn_active = True
-            self.dpn_client_count = random.randint(2, 5) 
-            self.lbl_dpn_status.config(text="NETWORK STATE: ROUTED", fg="#1db954")
-            self.btn_dpn_toggle.config(text="DEACTIVATE DPN CORE", bg="#3a1a1a", fg="#ff4444")
-            threading.Thread(target=lambda: os.system("sudo systemctl start hostapd dnsmasq wg-quick@wg0 > /dev/null 2>&1"), daemon=True).start()
-        self._render_dpn_canvas()
+            self.root.after(0, lambda: (
+                self.lbl_dpn_status.config(text="NETWORK STATE: ROUTED", fg="#1db954"),
+                self.btn_dpn_toggle.config(text="DEACTIVATE DPN CORE", bg="#3a1a1a", fg="#ff4444"),
+                self._render_dpn_canvas()
+            ))
+            self.log("DPN Hardware Tunnel Matrix Ignited.")
+        except Exception as e:
+            self.log(f"DPN start failed: {e}")
+            self.root.after(0, lambda: (
+                self.lbl_dpn_status.config(text="NETWORK STATE: ERROR", fg="#ff4444"),
+                self.btn_dpn_toggle.config(text="ACTIVATE DPN CORE", bg="#1a2a4a", fg="#00aaff")
+            ))
+
+    def _dpn_stop_worker(self):
+        try:
+            self._apply_dpn_nat(False)
+            os.system("sudo systemctl stop hostapd dnsmasq")
+            if self.dpn_force_vpn:
+                os.system(f"sudo wg-quick down {WG_IFACE} > /dev/null 2>&1")
+            self.dpn_client_count = 0
+            self.dpn_clients = []
+            self.root.after(0, lambda: (
+                self.lbl_dpn_status.config(text="NETWORK STATE: OFFLINE", fg="#ff4444"),
+                self._render_dpn_canvas()
+            ))
+            self.log("DPN core fully offline.")
+        except Exception as e:
+            self.log(f"DPN stop failed: {e}")
+
+    def _dpn_telemetry_loop(self):
+        last_tx = last_rx = None
+        while True:
+            try:
+                if self.dpn_active:
+                    clients = []
+                    if os.path.exists(DNSMASQ_LEASES):
+                        with open(DNSMASQ_LEASES) as fh:
+                            for line in fh:
+                                parts = line.split()
+                                if len(parts) >= 4:
+                                    clients.append({'mac': parts[1], 'ip': parts[2], 'host': parts[3] if parts[3] != '*' else 'unknown'})
+                    self.dpn_client_count = len(clients)
+                    self.dpn_clients = clients
+                    counters = psutil.net_io_counters(pernic=True).get(DPN_AP_IFACE)
+                    if counters:
+                        if last_tx is not None:
+                            self.dpn_tx_rate = max(0.0, (counters.bytes_sent - last_tx) / 1024.0 / 5.0)
+                            self.dpn_rx_rate = max(0.0, (counters.bytes_recv - last_rx) / 1024.0 / 5.0)
+                        last_tx, last_rx = counters.bytes_sent, counters.bytes_recv
+                    self.root.after(0, self._render_dpn_canvas)
+            except Exception:
+                pass
+            time.sleep(5)
+
+    def _toggle_force_vpn(self):
+        self.dpn_force_vpn = not self.dpn_force_vpn
+        if self.dpn_force_vpn:
+            self.btn_dpn_forcevpn.config(text="ON (WireGuard)", bg="#0a2a10", fg="#1db954")
+        else:
+            self.btn_dpn_forcevpn.config(text="OFF", bg="#333333", fg="#aaaaaa")
+        self.log(f"DPN uplink preference set to {'WireGuard tunnel' if self.dpn_force_vpn else 'direct WAN'}. Restart DPN core to apply.")
 
     def _change_dpn_ssid(self):
         TouchModal(self.root, "Select Broadcast Network SSID", ["Draftsman DPN", "Project Resonance AP", "Xeno Vault Mesh"], 
@@ -738,15 +1056,13 @@ class MatterDeskCore:
                    lambda c: (setattr(self, 'dpn_country', c), self.btn_dpn_country.config(text=c), self.log(f"DPN Proxy Node shifted target path -> {c}")))
 
     def _toggle_dpn_adblock(self):
-        self.last_interaction = time.time()
+        self.dpn_adblock = not self.dpn_adblock
         if self.dpn_adblock:
-            self.dpn_adblock = False
-            self.btn_dpn_blk.config(text="BYPASSED", bg="#333", fg="#aaa")
-            self.log("Pi-hole engine validation rules disabled on wlan0.")
-        else:
-            self.dpn_adblock = True
             self.btn_dpn_blk.config(text="ENABLED", bg="#0a2a10", fg="#1db954")
-            self.log("Pi-hole structural filters applied down broadcast domain.")
+            self.log("Ad/tracker DNS blocklist enabled. Restart DPN core to apply.")
+        else:
+            self.btn_dpn_blk.config(text="BYPASSED", bg="#333333", fg="#aaaaaa")
+            self.log("Ad/tracker DNS blocklist bypassed. Restart DPN core to apply.")
 
     # ==========================================
     # CROSS-DEVICE BOOKMARKS MODULE
@@ -818,7 +1134,7 @@ class MatterDeskCore:
             y += 35
 
     # ==========================================
-    # KERNEL ARP NETWORK SCANNER
+    # NETWORK MAPPER (now: ip neigh + vendor guess + block + deep scan)
     # ==========================================
     def _build_network_ui(self):
         f = tk.Frame(self.root, bg="#121212")
@@ -828,29 +1144,61 @@ class MatterDeskCore:
         top = tk.Frame(f, bg="#121212", height=40)
         top.pack(fill="x", padx=10, pady=10)
         tk.Button(top, text="< BACK", font=self.font_body, bg="#121212", fg="#fff", bd=0, command=lambda: self.nav_to("main")).pack(side="left")
-        tk.Label(top, text="NETWORK MAPPER (ARP)", font=self.font_sub, fg="#aa88ff", bg="#121212").pack(side="right", padx=20)
+        tk.Label(top, text="NETWORK MAPPER", font=self.font_sub, fg="#aa88ff", bg="#121212").pack(side="left", padx=20)
+        self.btn_net_autoscan = tk.Button(top, text="AUTO-SCAN: ON", font=font.Font(size=10, weight="bold"), bg="#0a2a10", fg="#1db954", bd=0, command=self._toggle_net_autoscan)
+        self.btn_net_autoscan.pack(side="right", padx=5)
+        tk.Button(top, text="DEEP SCAN", font=font.Font(size=10, weight="bold"), bg="#1a2a4a", fg="#88aaff", bd=0, command=self._trigger_deep_scan).pack(side="right", padx=5)
+        
         self.net_canvas = tk.Canvas(f, bg="#050505", highlightthickness=0)
         self.net_canvas.pack(fill="both", expand=True, padx=20, pady=10)
+
+    def _toggle_net_autoscan(self):
+        self.net_autoscan = not self.net_autoscan
+        self.btn_net_autoscan.config(text=f"AUTO-SCAN: {'ON' if self.net_autoscan else 'OFF'}",
+                                      bg="#0a2a10" if self.net_autoscan else "#333333",
+                                      fg="#1db954" if self.net_autoscan else "#aaaaaa")
 
     def _trigger_netscan(self):
         self.nav_to("network")
         self.net_canvas.delete("all")
-        self.net_canvas.create_text(20, 20, text="Executing Kernel ARP Scan...", fill="#aaaaaa", font=self.font_body, anchor="w")
-        threading.Thread(target=self._exec_arp_scan, daemon=True).start()
+        self.net_canvas.create_text(20, 20, text="Querying kernel neighbor table...", fill="#aaaaaa", font=self.font_body, anchor="w")
+        threading.Thread(target=self._exec_network_scan, daemon=True).start()
 
-    def _exec_arp_scan(self):
+    def _trigger_deep_scan(self):
+        self.net_canvas.delete("all")
+        self.net_canvas.create_text(20, 20, text="Running deep nmap sweep (may take up to 30s)...", fill="#aaaaaa", font=self.font_body, anchor="w")
+        threading.Thread(target=self._exec_deep_scan, daemon=True).start()
+
+    def _exec_deep_scan(self):
+        # Adjust the subnet below if your LAN uses a different range than the DPN's 10.45.0.0/24.
+        subnet = "10.45.0.0/24"
         try:
-            output = subprocess.check_output(['arp', '-a']).decode()
-            lines = output.split('\n')
+            subprocess.check_output(["nmap", "-sn", subnet], timeout=30)
+            self.log("Deep nmap sweep complete.")
+        except FileNotFoundError:
+            self.log("nmap not installed - run: sudo apt install nmap. Falling back to neighbor table.")
+        except Exception as e:
+            self.log(f"Deep scan error: {e}")
+        self._exec_network_scan()
+
+    def _exec_network_scan(self):
+        try:
+            output = subprocess.check_output(['ip', 'neigh', 'show']).decode()
             nodes = []
-            for line in lines:
-                if "at" in line and "on" in line:
-                    parts = line.split()
-                    if len(parts) >= 4:
-                        ip = parts[1].strip('()')
-                        mac = parts[3]
-                        host = parts[0]
-                        nodes.append((ip, mac, host))
+            for line in output.split('\n'):
+                if not line.strip() or 'lladdr' not in line:
+                    continue
+                parts = line.split()
+                ip = parts[0]
+                mac = parts[parts.index('lladdr') + 1]
+                state = parts[-1]
+                if state.upper() in ('FAILED', 'INCOMPLETE'):
+                    continue
+                try:
+                    host = socket.gethostbyaddr(ip)[0]
+                except Exception:
+                    host = "Unknown"
+                nodes.append({'ip': ip, 'mac': mac, 'host': host, 'vendor': guess_vendor(mac), 'state': state})
             self.root.after(0, lambda n=nodes: self._render_netscan(n))
         except Exception as e:
             self.root.after(0, lambda: self.net_canvas.create_text(20, 50, text=f"Scan Failed: {e}", fill="#ff4444", font=self.font_body, anchor="w"))
@@ -858,16 +1206,43 @@ class MatterDeskCore:
     def _render_netscan(self, nodes):
         self.net_canvas.delete("all")
         if not nodes:
-            self.net_canvas.create_text(20, 20, text="No nodes found in ARP cache.", fill="#aaaaaa", font=self.font_body, anchor="w")
+            self.net_canvas.create_text(20, 20, text="No nodes found in the neighbor table.", fill="#aaaaaa", font=self.font_body, anchor="w")
             return
-        y = 20
-        self.net_canvas.create_text(20, y, text=f"Discovered {len(nodes)} active nodes:", fill="#aa88ff", font=self.font_sub, anchor="w")
-        y += 40
-        for ip, mac, host in nodes:
-            self.net_canvas.create_text(20, y, text=ip, fill="#1db954", font=font.Font(family="Courier", size=12, weight="bold"), anchor="w")
-            self.net_canvas.create_text(180, y, text=mac, fill="#aaaaaa", font=font.Font(family="Courier", size=12), anchor="w")
-            self.net_canvas.create_text(380, y, text=host[:30], fill="#ffffff", font=self.font_body, anchor="w")
-            y += 35
+
+        container = tk.Frame(self.net_canvas, bg="#050505")
+        self.net_canvas.create_window((0, 0), window=container, anchor="nw", width=740)
+        tk.Label(container, text=f"Discovered {len(nodes)} active nodes:", fg="#aa88ff", bg="#050505", font=self.font_sub, anchor="w").pack(fill="x", pady=(0, 10))
+        for n in nodes:
+            row = tk.Frame(container, bg="#0a0a0a")
+            row.pack(fill="x", pady=2)
+            tk.Label(row, text=n['ip'], fg="#1db954", bg="#0a0a0a", font=font.Font(family="Courier", size=11, weight="bold"), width=15, anchor="w").pack(side="left")
+            tk.Label(row, text=n['mac'], fg="#aaaaaa", bg="#0a0a0a", font=font.Font(family="Courier", size=11), width=18, anchor="w").pack(side="left")
+            tk.Label(row, text=n['vendor'], fg="#88aaff", bg="#0a0a0a", font=self.font_body, width=16, anchor="w").pack(side="left")
+            tk.Label(row, text=n['host'][:18], fg="#ffffff", bg="#0a0a0a", font=self.font_body, width=18, anchor="w").pack(side="left")
+            blocked = n['mac'].upper() in self.blocked_macs
+            tk.Button(row, text="UNBLOCK" if blocked else "BLOCK", font=font.Font(size=9, weight="bold"),
+                      bg="#0a2a10" if blocked else "#2a0000", fg="#1db954" if blocked else "#ff4444", bd=0,
+                      command=lambda m=n['mac']: self._toggle_block_mac(m)).pack(side="right", padx=5)
+        self.net_canvas.update_idletasks()
+        self.net_canvas.config(scrollregion=self.net_canvas.bbox("all"))
+
+    def _toggle_block_mac(self, mac):
+        key = mac.upper()
+        if key in self.blocked_macs:
+            os.system(f"sudo iptables -D FORWARD -m mac --mac-source {mac} -j DROP > /dev/null 2>&1")
+            self.blocked_macs.discard(key)
+            self.log(f"Unblocked {mac} on the forwarding chain.")
+        else:
+            os.system(f"sudo iptables -I FORWARD -m mac --mac-source {mac} -j DROP")
+            self.blocked_macs.add(key)
+            self.log(f"Blocked {mac} at the kernel forward chain.")
+        self._exec_network_scan()
+
+    def _network_autoscan_loop(self):
+        while True:
+            if getattr(self, 'current_frame', '') == 'network' and getattr(self, 'net_autoscan', True):
+                threading.Thread(target=self._exec_network_scan, daemon=True).start()
+            time.sleep(15)
 
     # ==========================================
     # STANDBY SCREENSAVER MODULE
@@ -1119,6 +1494,269 @@ class MatterDeskCore:
             self.active_process.wait()
             self.active_process = None
             self.root.after(0, lambda: self.nav_to("study"))
+
+    # ==========================================
+    # NOTES APP (new)
+    # ==========================================
+    def _build_notes_ui(self):
+        f = tk.Frame(self.root, bg="#121212")
+        f.place(x=0, y=0, relwidth=1, relheight=1)
+        self.frames["notes"] = f
+        top = tk.Frame(f, bg="#121212", height=40)
+        top.pack(fill="x", padx=10, pady=5)
+        tk.Button(top, text="< BACK", font=self.font_body, bg="#121212", fg="#fff", bd=0, command=lambda: self.nav_to("main")).pack(side="left")
+        tk.Label(top, text="QUICK NOTES", font=self.font_sub, fg="#ffcc66", bg="#121212").pack(side="right", padx=20)
+
+        left = tk.Frame(f, bg="#121212", width=190)
+        left.pack(side="left", fill="y", padx=(10, 0), pady=10)
+        left.pack_propagate(False)
+        tk.Button(left, text="+ NEW NOTE", font=self.font_body, bg="#2a2a10", fg="#ffcc66", bd=0, command=self._new_note).pack(fill="x", pady=(0, 5), ipady=8)
+        self.notes_list_frame = tk.Frame(left, bg="#121212")
+        self.notes_list_frame.pack(fill="both", expand=True)
+
+        right = tk.Frame(f, bg="#0a0a0a")
+        right.pack(side="right", fill="both", expand=True, padx=10, pady=10)
+        self.notes_text = tk.Text(right, bg="#0a0a0a", fg="#fff", font=("Helvetica", 13), bd=0, highlightthickness=1, highlightbackground="#333", wrap="word", height=7)
+        self.notes_text.pack(fill="x", pady=(0, 5))
+        btn_row = tk.Frame(right, bg="#0a0a0a")
+        btn_row.pack(fill="x")
+        tk.Button(btn_row, text="SAVE", font=self.font_body, bg="#0a2a10", fg="#1db954", bd=0, command=self._save_current_note).pack(side="left", ipadx=15, ipady=8, padx=(0, 5))
+        tk.Button(btn_row, text="DELETE", font=self.font_body, bg="#2a0000", fg="#ff4444", bd=0, command=self._delete_current_note).pack(side="left", ipadx=15, ipady=8)
+        kbd_frame = tk.Frame(right, bg="#0a0a0a")
+        kbd_frame.pack(fill="both", expand=True, pady=10)
+        self._build_generic_osk(kbd_frame, self.notes_text)
+
+        self.notes_data = self._load_json(NOTES_FILE, {})
+        self.current_note_key = None
+        self._refresh_notes_list()
+
+    def _refresh_notes_list(self):
+        for w in self.notes_list_frame.winfo_children():
+            w.destroy()
+        for key in sorted(self.notes_data.keys(), reverse=True):
+            title = self.notes_data[key].get('title', key)
+            tk.Button(self.notes_list_frame, text=title[:20], font=font.Font(size=10), bg="#1a1a1a", fg="#ddd", bd=0, anchor="w",
+                      command=lambda k=key: self._open_note(k)).pack(fill="x", pady=2, ipady=6)
+
+    def _new_note(self):
+        key = str(int(time.time() * 1000))
+        self.notes_data[key] = {'title': 'New Note', 'body': ''}
+        self.current_note_key = key
+        self.notes_text.delete("1.0", tk.END)
+        self._refresh_notes_list()
+
+    def _open_note(self, key):
+        self.current_note_key = key
+        self.notes_text.delete("1.0", tk.END)
+        self.notes_text.insert("1.0", self.notes_data[key].get('body', ''))
+
+    def _save_current_note(self):
+        if not self.current_note_key:
+            self._new_note()
+        body = self.notes_text.get("1.0", "end-1c")
+        title = body.split("\n")[0][:24] if body.strip() else "Untitled"
+        self.notes_data[self.current_note_key] = {'title': title, 'body': body}
+        self._save_json(NOTES_FILE, self.notes_data)
+        self._refresh_notes_list()
+        self.log("Note saved.")
+
+    def _delete_current_note(self):
+        if self.current_note_key and self.current_note_key in self.notes_data:
+            del self.notes_data[self.current_note_key]
+            self._save_json(NOTES_FILE, self.notes_data)
+            self.current_note_key = None
+            self.notes_text.delete("1.0", tk.END)
+            self._refresh_notes_list()
+
+    # ==========================================
+    # FLASHCARDS APP (new) - JEE revision cards by subject
+    # ==========================================
+    def _build_flashcards_ui(self):
+        f = tk.Frame(self.root, bg="#0a0a1a")
+        f.place(x=0, y=0, relwidth=1, relheight=1)
+        self.frames["flashcards"] = f
+        top = tk.Frame(f, bg="#0a0a1a", height=40)
+        top.pack(fill="x", padx=10, pady=5)
+        tk.Button(top, text="< BACK", font=self.font_body, bg="#0a0a1a", fg="#fff", bd=0, command=lambda: self.nav_to("main")).pack(side="left")
+        tk.Label(top, text="REVISION FLASHCARDS", font=self.font_sub, fg="#88aaff", bg="#0a0a1a").pack(side="right", padx=20)
+
+        subj_row = tk.Frame(f, bg="#0a0a1a")
+        subj_row.pack(fill="x", padx=20)
+        self.fc_subject = tk.StringVar(value="Maths")
+        for s in ["Maths", "Physics", "Ochem", "Pchem", "Ichem", "Other"]:
+            tk.Button(subj_row, text=s, font=font.Font(size=10, weight="bold"), bg="#1a1a2a", fg="#88aaff", bd=0,
+                      command=lambda s=s: self._switch_fc_subject(s)).pack(side="left", padx=3, ipady=6, expand=True, fill="x")
+
+        self.fc_canvas = tk.Canvas(f, bg="#111133", highlightthickness=0, height=250)
+        self.fc_canvas.pack(fill="x", padx=40, pady=15)
+        self.fc_canvas.bind("<Button-1>", lambda e: self._flip_fc())
+
+        ctrl = tk.Frame(f, bg="#0a0a1a")
+        ctrl.pack(fill="x", padx=20)
+        tk.Button(ctrl, text="◀ PREV", font=self.font_body, bg="#1a1a1a", fg="#fff", bd=0, command=lambda: self._nav_fc(-1)).pack(side="left", ipadx=15, ipady=8)
+        tk.Button(ctrl, text="+ ADD CARD", font=self.font_body, bg="#1a2a4a", fg="#88aaff", bd=0, command=self._add_fc_card).pack(side="left", padx=10, ipadx=15, ipady=8)
+        tk.Button(ctrl, text="NEXT ▶", font=self.font_body, bg="#1a1a1a", fg="#fff", bd=0, command=lambda: self._nav_fc(1)).pack(side="right", ipadx=15, ipady=8)
+
+        self.flashcards_data = self._load_json(FLASHCARDS_FILE, {})
+        self.fc_index = 0
+        self.fc_showing_back = False
+        self._render_fc()
+
+    def _switch_fc_subject(self, s):
+        self.fc_subject.set(s)
+        self.fc_index = 0
+        self.fc_showing_back = False
+        self._render_fc()
+
+    def _current_fc_list(self):
+        return self.flashcards_data.get(self.fc_subject.get(), [])
+
+    def _render_fc(self):
+        self.fc_canvas.delete("all")
+        cards = self._current_fc_list()
+        if not cards:
+            self.fc_canvas.create_text(360, 120, text="No cards yet for this subject.\nTap + ADD CARD to create one.", fill="#666", font=self.font_body, justify="center")
+            return
+        self.fc_index %= len(cards)
+        card = cards[self.fc_index]
+        text = card['back'] if self.fc_showing_back else card['front']
+        color = "#1db954" if self.fc_showing_back else "#88aaff"
+        self.fc_canvas.create_text(360, 25, text=f"Card {self.fc_index+1}/{len(cards)}  ({'ANSWER' if self.fc_showing_back else 'QUESTION'} — tap to flip)", fill="#666", font=self.font_body)
+        self.fc_canvas.create_text(360, 135, text=text, fill=color, font=font.Font(size=16, weight="bold"), width=600, justify="center")
+
+    def _flip_fc(self):
+        if self._current_fc_list():
+            self.fc_showing_back = not self.fc_showing_back
+            self._render_fc()
+
+    def _nav_fc(self, delta):
+        if self._current_fc_list():
+            self.fc_index = (self.fc_index + delta) % len(self._current_fc_list())
+            self.fc_showing_back = False
+            self._render_fc()
+
+    def _add_fc_card(self):
+        def save(front, back):
+            subj = self.fc_subject.get()
+            self.flashcards_data.setdefault(subj, []).append({'front': front, 'back': back})
+            self._save_json(FLASHCARDS_FILE, self.flashcards_data)
+            self.fc_index = len(self.flashcards_data[subj]) - 1
+            self.fc_showing_back = False
+            self._render_fc()
+            self.log(f"Flashcard added to {subj}.")
+        FlashcardModal(self.root, self, save)
+
+    # ==========================================
+    # TASKS APP (new) - simple to-do list
+    # ==========================================
+    def _build_tasks_ui(self):
+        f = tk.Frame(self.root, bg="#0a1a0a")
+        f.place(x=0, y=0, relwidth=1, relheight=1)
+        self.frames["tasks"] = f
+        top = tk.Frame(f, bg="#0a1a0a", height=40)
+        top.pack(fill="x", padx=10, pady=5)
+        tk.Button(top, text="< BACK", font=self.font_body, bg="#0a1a0a", fg="#fff", bd=0, command=lambda: self.nav_to("main")).pack(side="left")
+        tk.Label(top, text="TASK LIST", font=self.font_sub, fg="#1db954", bg="#0a1a0a").pack(side="right", padx=20)
+        self.tasks_list_frame = tk.Frame(f, bg="#0a1a0a")
+        self.tasks_list_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        tk.Button(f, text="+ ADD TASK", font=self.font_sub, bg="#0a2a10", fg="#1db954", bd=0, command=self._add_task_modal).pack(fill="x", padx=20, pady=10, ipady=10)
+        self.tasks_data = self._load_json(TASKS_FILE, [])
+        self._render_tasks()
+
+    def _render_tasks(self):
+        for w in self.tasks_list_frame.winfo_children():
+            w.destroy()
+        if not self.tasks_data:
+            tk.Label(self.tasks_list_frame, text="No tasks yet. Add one below.", fg="#666", bg="#0a1a0a", font=self.font_body).pack(pady=20)
+            return
+        for i, t in enumerate(self.tasks_data):
+            row = tk.Frame(self.tasks_list_frame, bg="#0a1a0a")
+            row.pack(fill="x", pady=3)
+            done = t.get('done', False)
+            tk.Button(row, text="✔" if done else "○", font=font.Font(size=14, weight="bold"), fg="#1db954" if done else "#666",
+                      bg="#0a1a0a", bd=0, width=3, command=lambda idx=i: self._toggle_task(idx)).pack(side="left")
+            tk.Label(row, text=t.get('text', ''), fg="#666" if done else "#fff", bg="#0a1a0a", font=self.font_body, anchor="w").pack(side="left", fill="x", expand=True, padx=10)
+            tk.Button(row, text="✕", font=self.font_body, fg="#ff4444", bg="#0a1a0a", bd=0, command=lambda idx=i: self._delete_task(idx)).pack(side="right")
+
+    def _toggle_task(self, idx):
+        self.tasks_data[idx]['done'] = not self.tasks_data[idx].get('done', False)
+        self._save_json(TASKS_FILE, self.tasks_data)
+        self._render_tasks()
+
+    def _delete_task(self, idx):
+        del self.tasks_data[idx]
+        self._save_json(TASKS_FILE, self.tasks_data)
+        self._render_tasks()
+
+    def _add_task_modal(self):
+        top = tk.Toplevel(self.root)
+        top.overrideredirect(True)
+        top.geometry("800x480+0+0")
+        top.configure(bg="#050505")
+        top.attributes('-topmost', True)
+        tk.Label(top, text="New Task", font=font.Font(size=18, weight="bold"), fg="#1db954", bg="#050505").pack(pady=10)
+        entry = tk.Text(top, height=3, bg="#111111", fg="#fff", font=self.font_sub)
+        entry.pack(fill="x", padx=20, pady=10)
+        kbd = tk.Frame(top, bg="#050505")
+        kbd.pack(fill="both", expand=True, padx=20, pady=5)
+        self._build_generic_osk(kbd, entry)
+
+        def save():
+            text = entry.get("1.0", "end-1c").strip()
+            if text:
+                self.tasks_data.append({'text': text, 'done': False})
+                self._save_json(TASKS_FILE, self.tasks_data)
+                self._render_tasks()
+            top.destroy()
+
+        btn_row = tk.Frame(top, bg="#050505")
+        btn_row.pack(fill="x", padx=20, pady=10)
+        tk.Button(btn_row, text="SAVE", font=self.font_sub, bg="#0a2a10", fg="#1db954", bd=0, command=save).pack(side="left", ipadx=20, ipady=10)
+        tk.Button(btn_row, text="CANCEL", font=self.font_sub, bg="#2a0000", fg="#ff4444", bd=0, command=top.destroy).pack(side="right", ipadx=20, ipady=10)
+
+    # ==========================================
+    # EXAM COUNTDOWN APP (new)
+    # ==========================================
+    def _build_countdown_ui(self):
+        f = tk.Frame(self.root, bg="#050505")
+        f.place(x=0, y=0, relwidth=1, relheight=1)
+        self.frames["countdown"] = f
+        top = tk.Frame(f, bg="#050505", height=40)
+        top.pack(fill="x", padx=10, pady=5)
+        tk.Button(top, text="< BACK", font=self.font_body, bg="#050505", fg="#fff", bd=0, command=lambda: self.nav_to("main")).pack(side="left")
+        tk.Label(top, text="EXAM COUNTDOWN", font=self.font_sub, fg="#ff8888", bg="#050505").pack(side="right", padx=20)
+        self.countdown_days_lbl = tk.Label(f, text="--", font=font.Font(size=90, weight="bold"), fg="#ff8888", bg="#050505")
+        self.countdown_days_lbl.pack(pady=(50, 0))
+        tk.Label(f, text="DAYS REMAINING", font=self.font_sub, fg="#888", bg="#050505").pack()
+        self.countdown_date_lbl = tk.Label(f, text="", font=self.font_body, fg="#666", bg="#050505")
+        self.countdown_date_lbl.pack(pady=10)
+        tk.Button(f, text="SET TARGET DATE", font=self.font_body, bg="#1a1a1a", fg="#ff8888", bd=0, command=self._set_countdown_date).pack(ipadx=20, ipady=10)
+        self.countdown_config = self._load_json(COUNTDOWN_FILE, {"date": "2027-04-01"})
+        self._refresh_countdown()
+
+    def _refresh_countdown(self):
+        try:
+            target = datetime.datetime.strptime(self.countdown_config.get("date", "2027-04-01"), "%Y-%m-%d")
+            days = (target - datetime.datetime.now()).days
+            self.countdown_days_lbl.config(text=str(max(0, days)))
+            self.countdown_date_lbl.config(text=f"Target: {target.strftime('%d %b %Y')}")
+        except Exception:
+            pass
+
+    def _set_countdown_date(self):
+        opts = []
+        base = datetime.datetime.now().replace(day=1)
+        for m in range(1, 13):
+            month = base.month + m
+            year = base.year + (month - 1) // 12
+            month = ((month - 1) % 12) + 1
+            opts.append(f"{year:04d}-{month:02d}-01")
+        TouchModal(self.root, "Select Target Month (1st)", opts, self._save_countdown_date)
+
+    def _save_countdown_date(self, date_str):
+        self.countdown_config["date"] = date_str
+        self._save_json(COUNTDOWN_FILE, self.countdown_config)
+        self._refresh_countdown()
 
     # ==========================================
     # SYSTEM LOGS & DIAGNOSTICS
