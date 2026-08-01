@@ -44,8 +44,8 @@ COUNTDOWN_FILE = f'{DATA_DIR}/countdown.json'
 # EDIT THESE TWO LINES to match your actual hardware if the guess below is wrong.
 # DPN_AP_IFACE  = the interface that BROADCASTS the DPN hotspot (recommend: your TP-Link adapter)
 # DPN_WAN_IFACE = the interface that connects OUT to your home router (recommend: the Pi's onboard wifi)
-DPN_AP_IFACE = 'wlan0'
-DPN_WAN_IFACE = 'wlan1'
+DPN_AP_IFACE = 'wlan1'
+DPN_WAN_IFACE = 'wlan0'
 WG_IFACE = 'wg0'
 HOSTAPD_CONF = '/etc/hostapd/hostapd.conf'
 DNSMASQ_CONF = '/etc/dnsmasq.d/dpn.conf'
@@ -70,26 +70,49 @@ def guess_vendor(mac):
         return "Unknown"
 
 
+# ==========================================
+# DRAFTSMAN DESIGN SYSTEM
+# One shared token set + a couple of drawing helpers so every screen (old and new)
+# reads as one coherent device instead of eleven differently-styled apps.
+# Color grouping carries meaning: CYAN = infra/network tools, VIOLET = the study
+# suite, GREEN = Spotify's own brand + "healthy/online" status, AMBER = caution,
+# RED = danger only. Everything else is neutral graphite.
+# ==========================================
+BASE_BG = "#08090c"
+CARD_BG = "#12151c"
+CARD_BG_ALT = "#171b24"
+LINE = "#242938"
+TEXT_PRIMARY = "#eef1f6"
+TEXT_MUTED = "#7a8394"
+TEXT_DIM = "#454c5c"
+ACCENT_CYAN = "#39c2ff"
+ACCENT_VIOLET = "#9b8cff"
+ACCENT_GREEN = "#1db954"
+ACCENT_AMBER = "#ffb020"
+ACCENT_RED = "#ff4d4d"
+
+
 class TouchModal(tk.Toplevel):
     def __init__(self, parent, title, options, callback):
         super().__init__(parent)
         self.overrideredirect(True)
         self.geometry("800x480+0+0")
-        self.configure(bg="#050505")
+        self.configure(bg=BASE_BG)
         self.attributes('-topmost', True)
         self.callback = callback
         
-        lbl_font = font.Font(family="Helvetica", size=18, weight="bold")
+        lbl_font = font.Font(family="Helvetica", size=16, weight="bold")
         btn_font = font.Font(family="Helvetica", size=14, weight="bold")
         
-        top = tk.Frame(self, bg="#121212", height=60)
+        top = tk.Frame(self, bg=CARD_BG_ALT, height=60)
         top.pack(fill="x")
-        tk.Label(top, text=title, font=lbl_font, fg="#1db954", bg="#121212").pack(side="left", padx=20, pady=15)
-        tk.Button(top, text="✕ CANCEL", font=btn_font, bg="#121212", fg="#ff4444", bd=0, command=self.destroy).pack(side="right", padx=20)
+        tk.Label(top, text=" ".join(list(title.upper())), font=lbl_font, fg=ACCENT_CYAN, bg=CARD_BG_ALT).pack(side="left", padx=20, pady=15)
+        tk.Button(top, text="✕ CANCEL", font=btn_font, bg=CARD_BG_ALT, fg=ACCENT_RED, bd=0, command=self.destroy).pack(side="right", padx=20)
+        tk.Frame(self, bg=LINE, height=1).pack(fill="x")
 
-        canvas = tk.Canvas(self, bg="#050505", highlightthickness=0)
+        canvas = tk.Canvas(self, bg=BASE_BG, highlightthickness=0)
         scrollbar = tk.Scrollbar(self, orient="vertical", command=canvas.yview, width=30)
-        scroll_frame = tk.Frame(canvas, bg="#050505")
+        scroll_frame = tk.Frame(canvas, bg=BASE_BG)
         
         scroll_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.create_window((0, 0), window=scroll_frame, anchor="nw", width=750)
@@ -99,7 +122,7 @@ class TouchModal(tk.Toplevel):
         scrollbar.pack(side="right", fill="y")
         
         for opt in options:
-            btn = tk.Button(scroll_frame, text=opt, font=btn_font, bg="#1a1a1a", fg="#ffffff", bd=0, activebackground="#333333", anchor="w", padx=20)
+            btn = tk.Button(scroll_frame, text=opt, font=btn_font, bg=CARD_BG, fg=TEXT_PRIMARY, bd=0, activebackground=CARD_BG_ALT, anchor="w", padx=20)
             btn.pack(fill="x", pady=5, ipady=15)
             btn.config(command=lambda o=opt: self._select(o))
             
@@ -130,31 +153,31 @@ class FlashcardModal(tk.Toplevel):
         super().__init__(root)
         self.overrideredirect(True)
         self.geometry("800x480+0+0")
-        self.configure(bg="#050505")
+        self.configure(bg=BASE_BG)
         self.attributes('-topmost', True)
         self.on_save = on_save
 
-        tk.Label(self, text="New Flashcard", font=font.Font(size=18, weight="bold"), fg="#88aaff", bg="#050505").pack(pady=(15, 5))
-        tk.Label(self, text="Front (Question):", fg="#fff", bg="#050505", font=app.font_body).pack(anchor="w", padx=20)
-        self.front = tk.Text(self, height=3, bg="#111111", fg="#fff", font=app.font_body)
+        tk.Label(self, text="N E W   F L A S H C A R D", font=font.Font(size=16, weight="bold"), fg=ACCENT_VIOLET, bg=BASE_BG).pack(pady=(15, 5))
+        tk.Label(self, text="Front (Question):", fg=TEXT_MUTED, bg=BASE_BG, font=app.font_body).pack(anchor="w", padx=20)
+        self.front = tk.Text(self, height=3, bg=CARD_BG, fg=TEXT_PRIMARY, font=app.font_body, bd=0, highlightthickness=1, highlightbackground=LINE)
         self.front.pack(fill="x", padx=20, pady=5)
-        tk.Label(self, text="Back (Answer):", fg="#fff", bg="#050505", font=app.font_body).pack(anchor="w", padx=20)
-        self.back = tk.Text(self, height=3, bg="#111111", fg="#fff", font=app.font_body)
+        tk.Label(self, text="Back (Answer):", fg=TEXT_MUTED, bg=BASE_BG, font=app.font_body).pack(anchor="w", padx=20)
+        self.back = tk.Text(self, height=3, bg=CARD_BG, fg=TEXT_PRIMARY, font=app.font_body, bd=0, highlightthickness=1, highlightbackground=LINE)
         self.back.pack(fill="x", padx=20, pady=5)
 
         self.active_target = self.front
         self.front.bind("<Button-1>", lambda e: setattr(self, 'active_target', self.front))
         self.back.bind("<Button-1>", lambda e: setattr(self, 'active_target', self.back))
 
-        kbd = tk.Frame(self, bg="#050505")
+        kbd = tk.Frame(self, bg=BASE_BG)
         kbd.pack(fill="both", expand=True, padx=20, pady=5)
         proxy = ActiveTextProxy(lambda: self.active_target)
         app._build_generic_osk(kbd, proxy)
 
-        btn_row = tk.Frame(self, bg="#050505")
+        btn_row = tk.Frame(self, bg=BASE_BG)
         btn_row.pack(fill="x", padx=20, pady=10)
-        tk.Button(btn_row, text="SAVE CARD", font=app.font_sub, bg="#0a2a10", fg="#1db954", bd=0, command=self._save).pack(side="left", ipadx=20, ipady=10)
-        tk.Button(btn_row, text="CANCEL", font=app.font_sub, bg="#2a0000", fg="#ff4444", bd=0, command=self.destroy).pack(side="right", ipadx=20, ipady=10)
+        tk.Button(btn_row, text="SAVE CARD", font=app.font_sub, bg=CARD_BG, fg=ACCENT_GREEN, bd=0, command=self._save).pack(side="left", ipadx=20, ipady=10)
+        tk.Button(btn_row, text="CANCEL", font=app.font_sub, bg=CARD_BG, fg=ACCENT_RED, bd=0, command=self.destroy).pack(side="right", ipadx=20, ipady=10)
 
     def _save(self):
         f_txt = self.front.get("1.0", "end-1c").strip()
@@ -395,22 +418,54 @@ class MatterDeskCore:
                     btn.grid(row=r, column=c, sticky="nsew", padx=1, pady=1)
         rebuild()
 
+    def _spaced(self, text):
+        """Letter-spaced uppercase, used for module headers ('blueprint stencil' look)."""
+        return " ".join(list(text.upper()))
+
+    def _build_screen_header(self, parent, mod_code, title, back_cmd, accent=None):
+        """Consistent top bar for every screen: module code + letter-spaced title + back button,
+        with a hairline divider underneath. Returns the right-side frame so callers can pack
+        extra controls (toggles, action buttons) into it."""
+        accent = accent or ACCENT_CYAN
+        bar = tk.Frame(parent, bg=CARD_BG_ALT, height=48)
+        bar.pack(fill="x")
+        bar.pack_propagate(False)
+        tk.Button(bar, text="‹ BACK", font=self.font_body, bg=CARD_BG_ALT, fg=TEXT_MUTED, bd=0,
+                  activebackground=CARD_BG_ALT, activeforeground=TEXT_PRIMARY, command=back_cmd).pack(side="left", padx=16)
+        title_frame = tk.Frame(bar, bg=CARD_BG_ALT)
+        title_frame.pack(side="left", padx=6)
+        tk.Label(title_frame, text=mod_code, font=font.Font(family="Courier", size=9), fg=TEXT_DIM, bg=CARD_BG_ALT).pack(anchor="w")
+        tk.Label(title_frame, text=self._spaced(title), font=font.Font(family="Helvetica", size=13, weight="bold"), fg=accent, bg=CARD_BG_ALT).pack(anchor="w")
+        right = tk.Frame(bar, bg=CARD_BG_ALT)
+        right.pack(side="right", padx=16)
+        tk.Frame(parent, bg=LINE, height=1).pack(fill="x")
+        return right
+
+    def _draw_corner_brackets(self, canvas, x1, y1, x2, y2, color, size=14, width=2):
+        """Blueprint-style corner marks — the device's one signature visual motif,
+        used to frame primary panels instead of a plain rectangle border."""
+        canvas.create_line(x1, y1 + size, x1, y1, x1 + size, y1, fill=color, width=width)
+        canvas.create_line(x2 - size, y1, x2, y1, x2, y1 + size, fill=color, width=width)
+        canvas.create_line(x1, y2 - size, x1, y2, x1 + size, y2, fill=color, width=width)
+        canvas.create_line(x2 - size, y2, x2, y2, x2, y2 - size, fill=color, width=width)
+
     # ==========================================
     # macOS STYLE BOOT & OTA UX
     # ==========================================
     def _build_boot_ui(self):
-        f = tk.Frame(self.root, bg="#000000")
+        f = tk.Frame(self.root, bg=BASE_BG)
         f.place(x=0, y=0, relwidth=1, relheight=1)
         self.frames["boot"] = f
-        self.boot_canvas = tk.Canvas(f, width=800, height=480, bg="#000000", highlightthickness=0)
+        self.boot_canvas = tk.Canvas(f, width=800, height=480, bg=BASE_BG, highlightthickness=0)
         self.boot_canvas.pack()
         try:
             self.boot_logo_img = ImageTk.PhotoImage(Image.open(LOGO_IMG_PATH).resize((120, 120), Image.LANCZOS))
             self.boot_canvas.create_image(400, 200, image=self.boot_logo_img)
         except Exception:
-            self.boot_canvas.create_text(400, 200, text="D", font=font.Font(family="Helvetica", size=80, weight="bold"), fill="#ffffff")
-        self.boot_canvas.create_rectangle(300, 320, 500, 324, fill="#333333", outline="")
-        self.boot_bar = self.boot_canvas.create_rectangle(300, 320, 300, 324, fill="#ffffff", outline="")
+            self.boot_canvas.create_text(400, 200, text="D", font=font.Font(family="Helvetica", size=80, weight="bold"), fill=TEXT_PRIMARY)
+        self.boot_canvas.create_text(400, 260, text="D R A F T S M A N   M A T T E R D E S K", font=font.Font(family="Courier", size=10), fill=TEXT_DIM)
+        self.boot_canvas.create_rectangle(300, 320, 500, 324, fill=LINE, outline="")
+        self.boot_bar = self.boot_canvas.create_rectangle(300, 320, 300, 324, fill=ACCENT_CYAN, outline="")
 
     def _animate_boot_screen(self, progress=0):
         if progress > 200:
@@ -421,19 +476,19 @@ class MatterDeskCore:
         self.root.after(40, self._animate_boot_screen, progress + step)
 
     def _build_ota_ui(self):
-        f = tk.Frame(self.root, bg="#000000")
+        f = tk.Frame(self.root, bg=BASE_BG)
         f.place(x=0, y=0, relwidth=1, relheight=1)
         self.frames["ota"] = f
-        self.ota_canvas = tk.Canvas(f, width=800, height=480, bg="#000000", highlightthickness=0)
+        self.ota_canvas = tk.Canvas(f, width=800, height=480, bg=BASE_BG, highlightthickness=0)
         self.ota_canvas.pack()
         try:
             self.ota_logo_img = ImageTk.PhotoImage(Image.open(LOGO_IMG_PATH).resize((120, 120), Image.LANCZOS))
             self.ota_canvas.create_image(400, 200, image=self.ota_logo_img)
         except Exception:
-            self.ota_canvas.create_text(400, 200, text="D", font=font.Font(family="Helvetica", size=80, weight="bold"), fill="#ffffff")
-        self.ota_canvas.create_rectangle(300, 320, 500, 324, fill="#333333", outline="")
-        self.ota_bar = self.ota_canvas.create_rectangle(300, 320, 300, 324, fill="#ffffff", outline="")
-        self.ota_text = self.ota_canvas.create_text(400, 350, text="Preparing Update...", font=font.Font(family="Helvetica", size=12), fill="#aaaaaa")
+            self.ota_canvas.create_text(400, 200, text="D", font=font.Font(family="Helvetica", size=80, weight="bold"), fill=TEXT_PRIMARY)
+        self.ota_canvas.create_rectangle(300, 320, 500, 324, fill=LINE, outline="")
+        self.ota_bar = self.ota_canvas.create_rectangle(300, 320, 300, 324, fill=ACCENT_CYAN, outline="")
+        self.ota_text = self.ota_canvas.create_text(400, 350, text="Preparing Update...", font=font.Font(family="Helvetica", size=12), fill=TEXT_MUTED)
 
     def _animate_ota_bar(self):
         if getattr(self, 'ota_finished', False):
@@ -441,7 +496,7 @@ class MatterDeskCore:
             self.ota_canvas.itemconfig(self.ota_text, text="Restarting Firmware...")
             return
         if getattr(self, 'ota_error', False):
-            self.ota_canvas.itemconfig(self.ota_text, text="Verification Failed. Rebooting...", fill="#ff4444")
+            self.ota_canvas.itemconfig(self.ota_text, text="Verification Failed. Rebooting...", fill=ACCENT_RED)
             return
         if not hasattr(self, 'ota_progress'): self.ota_progress = 0
         if self.ota_progress < 180:
@@ -453,24 +508,24 @@ class MatterDeskCore:
     # SYSTEM POWER & TELEMETRY HUB
     # ==========================================
     def _build_telemetry_bar(self):
-        f = tk.Frame(self.root, bg="#000000", height=20)
+        f = tk.Frame(self.root, bg=BASE_BG, height=20)
         f.place(x=0, y=460, width=800, height=20)
         self.frames["telemetry_bar"] = f
         
-        self.lbl_hw_cpu = tk.Label(f, text="CPU: 0%", font=("Helvetica", 8, "bold"), fg="#888", bg="#000")
+        self.lbl_hw_cpu = tk.Label(f, text="CPU: 0%", font=("Helvetica", 8, "bold"), fg=TEXT_MUTED, bg=BASE_BG)
         self.lbl_hw_cpu.pack(side="left", padx=5)
-        self.lbl_hw_ram = tk.Label(f, text="RAM: 0%", font=("Helvetica", 8, "bold"), fg="#888", bg="#000")
+        self.lbl_hw_ram = tk.Label(f, text="RAM: 0%", font=("Helvetica", 8, "bold"), fg=TEXT_MUTED, bg=BASE_BG)
         self.lbl_hw_ram.pack(side="left", padx=5)
         
-        self.lbl_hw_up = tk.Label(f, text="UP: --", font=("Helvetica", 8, "bold"), fg="#888", bg="#000")
+        self.lbl_hw_up = tk.Label(f, text="UP: --", font=("Helvetica", 8, "bold"), fg=TEXT_MUTED, bg=BASE_BG)
         self.lbl_hw_up.pack(side="left", padx=5)
-        self.lbl_hw_sleep = tk.Label(f, text="SLEEP: --", font=("Helvetica", 8, "bold"), fg="#1db954", bg="#000")
+        self.lbl_hw_sleep = tk.Label(f, text="SLEEP: --", font=("Helvetica", 8, "bold"), fg=ACCENT_GREEN, bg=BASE_BG)
         self.lbl_hw_sleep.pack(side="left", padx=5)
         
-        self.lbl_hw_temp = tk.Label(f, text="TEMP: 0°C", font=("Helvetica", 8, "bold"), fg="#888", bg="#000")
+        self.lbl_hw_temp = tk.Label(f, text="TEMP: 0°C", font=("Helvetica", 8, "bold"), fg=TEXT_MUTED, bg=BASE_BG)
         self.lbl_hw_temp.pack(side="right", padx=10)
         
-        self.telemetry_graph = tk.Canvas(f, width=120, height=18, bg="#000000", highlightthickness=0)
+        self.telemetry_graph = tk.Canvas(f, width=120, height=18, bg=BASE_BG, highlightthickness=0)
         self.telemetry_graph.pack(side="right", padx=10, pady=1)
         self.thermal_panic = False
 
@@ -478,12 +533,12 @@ class MatterDeskCore:
         f = tk.Frame(self.root, bg="#1a0000")
         f.place(x=0, y=0, relwidth=1, relheight=1)
         self.frames["panic"] = f
-        tk.Label(f, text="CRITICAL THERMAL EVENT", font=font.Font(family="Helvetica", size=30, weight="bold"), fg="#ff4444", bg="#1a0000").pack(pady=(120, 10))
-        self.lbl_panic_temp = tk.Label(f, text="Hardware Core: 82°C+", font=self.font_sub, fg="#ffaa00", bg="#1a0000")
+        tk.Label(f, text=self._spaced("Critical Thermal Event"), font=font.Font(family="Helvetica", size=26, weight="bold"), fg=ACCENT_RED, bg="#1a0000").pack(pady=(120, 10))
+        self.lbl_panic_temp = tk.Label(f, text="Hardware Core: 82°C+", font=self.font_sub, fg=ACCENT_AMBER, bg="#1a0000")
         self.lbl_panic_temp.pack()
-        self.lbl_panic_count = tk.Label(f, text="Powering off in 60s to prevent degradation.", font=self.font_header, fg="#fff", bg="#1a0000")
+        self.lbl_panic_count = tk.Label(f, text="Powering off in 60s to prevent degradation.", font=self.font_header, fg=TEXT_PRIMARY, bg="#1a0000")
         self.lbl_panic_count.pack(pady=40)
-        tk.Button(f, text="OVERRIDE (RISK DAMAGE)", font=self.font_sub, bg="#330000", fg="#ff4444", bd=0, command=self._cancel_panic).pack(ipady=10, ipadx=20)
+        tk.Button(f, text="OVERRIDE (RISK DAMAGE)", font=self.font_sub, bg="#330000", fg=ACCENT_RED, bd=0, command=self._cancel_panic).pack(ipady=10, ipadx=20)
 
     def _cancel_panic(self):
         self.log("Thermal shutdown overridden by user risk authorization.")
@@ -533,9 +588,9 @@ class MatterDeskCore:
                     with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f: temp_c = float(f.read()) / 1000.0
                 except: pass
                 
-                cpu_col = "#ff4444" if cpu > 85 else "#888"
-                ram_col = "#ff4444" if ram > 85 else "#888"
-                tmp_col = "#ff4444" if temp_c > 75 else ("#ffaa00" if temp_c > 65 else "#888")
+                cpu_col = ACCENT_RED if cpu > 85 else TEXT_MUTED
+                ram_col = ACCENT_RED if ram > 85 else TEXT_MUTED
+                tmp_col = ACCENT_RED if temp_c > 75 else (ACCENT_AMBER if temp_c > 65 else TEXT_MUTED)
 
                 self.root.after(0, lambda c=cpu, r=ram, t=temp_c, u=up_str, s=sleep_str, cc=cpu_col, rc=ram_col, tc=tmp_col: 
                                 self._update_telemetry(c, r, t, u, s, cc, rc, tc))
@@ -562,11 +617,11 @@ class MatterDeskCore:
             x2 = (i + 1) * 3
             y1_tx = 18 - int((self.net_history_tx[i] / max_val) * 16)
             y2_tx = 18 - int((self.net_history_tx[i+1] / max_val) * 16)
-            self.telemetry_graph.create_line(x1, y1_tx, x2, y2_tx, fill="#1db954", width=1)
+            self.telemetry_graph.create_line(x1, y1_tx, x2, y2_tx, fill=ACCENT_GREEN, width=1)
             
             y1_rx = 18 - int((self.net_history_rx[i] / max_val) * 16)
             y2_rx = 18 - int((self.net_history_rx[i+1] / max_val) * 16)
-            self.telemetry_graph.create_line(x1, y1_rx, x2, y2_rx, fill="#88aaff", width=1)
+            self.telemetry_graph.create_line(x1, y1_rx, x2, y2_rx, fill=ACCENT_CYAN, width=1)
 
     def _trigger_panic(self):
         self.log("CRITICAL: Thermal shutdown initiated.")
@@ -594,63 +649,72 @@ class MatterDeskCore:
         self.home_canvas.pack(fill="both", expand=True)
         self.home_canvas.create_image(0, 0, image=self.bg_image, anchor="nw")
 
-        self._create_round_rect(self.home_canvas, 20, 20, 320, 220, radius=25, fill="#121212", stipple="gray50")
-        self.home_canvas.create_text(40, 50, text="DRAFTSMAN", font=font.Font(family="Helvetica", size=14, weight="bold"), fill="#1db954", anchor="w")
+        # --- Identity / clock card ---
+        self._create_round_rect(self.home_canvas, 20, 20, 320, 220, radius=18, fill=CARD_BG)
+        self._draw_corner_brackets(self.home_canvas, 20, 20, 320, 220, ACCENT_CYAN, size=12, width=1)
+        self.home_canvas.create_text(40, 42, text="D R A F T S M A N", font=font.Font(family="Helvetica", size=12, weight="bold"), fill=ACCENT_CYAN, anchor="w")
         
-        self.clock_f = tk.Canvas(self.home_canvas, width=280, height=60, bg="#121212", highlightthickness=0)
-        self.clock_f.place(x=35, y=75)
+        self.clock_f = tk.Canvas(self.home_canvas, width=280, height=60, bg=CARD_BG, highlightthickness=0)
+        self.clock_f.place(x=35, y=70)
         c_fnt = font.Font(family="Helvetica", size=48, weight="bold")
-        self.c_h_m = self.clock_f.create_text(0, 30, text="00", font=c_fnt, fill="#ffffff", anchor="w")
-        self.c_h_o = self.clock_f.create_text(0, -30, text="", font=c_fnt, fill="#ffffff", anchor="w")
-        self.clock_f.create_text(65, 27, text=":", font=c_fnt, fill="#777777", anchor="w")
-        self.c_m_m = self.clock_f.create_text(85, 30, text="00", font=c_fnt, fill="#ffffff", anchor="w")
-        self.c_m_o = self.clock_f.create_text(85, -30, text="", font=c_fnt, fill="#ffffff", anchor="w")
-        self.clock_f.create_text(150, 27, text=":", font=c_fnt, fill="#777777", anchor="w")
-        self.c_s_m = self.clock_f.create_text(170, 30, text="00", font=c_fnt, fill="#ffffff", anchor="w")
-        self.c_s_o = self.clock_f.create_text(170, -30, text="", font=c_fnt, fill="#ffffff", anchor="w")
-        self.c_ap = self.clock_f.create_text(245, 38, text="AM", font=font.Font(family="Helvetica", size=16, weight="bold"), fill="#1db954", anchor="w")
+        self.c_h_m = self.clock_f.create_text(0, 30, text="00", font=c_fnt, fill=TEXT_PRIMARY, anchor="w")
+        self.c_h_o = self.clock_f.create_text(0, -30, text="", font=c_fnt, fill=TEXT_PRIMARY, anchor="w")
+        self.clock_f.create_text(65, 27, text=":", font=c_fnt, fill=TEXT_DIM, anchor="w")
+        self.c_m_m = self.clock_f.create_text(85, 30, text="00", font=c_fnt, fill=TEXT_PRIMARY, anchor="w")
+        self.c_m_o = self.clock_f.create_text(85, -30, text="", font=c_fnt, fill=TEXT_PRIMARY, anchor="w")
+        self.clock_f.create_text(150, 27, text=":", font=c_fnt, fill=TEXT_DIM, anchor="w")
+        self.c_s_m = self.clock_f.create_text(170, 30, text="00", font=c_fnt, fill=TEXT_PRIMARY, anchor="w")
+        self.c_s_o = self.clock_f.create_text(170, -30, text="", font=c_fnt, fill=TEXT_PRIMARY, anchor="w")
+        self.c_ap = self.clock_f.create_text(245, 38, text="AM", font=font.Font(family="Helvetica", size=16, weight="bold"), fill=ACCENT_CYAN, anchor="w")
 
-        self.greet_id = self.home_canvas.create_text(40, 160, text="Loading...", font=font.Font(family="Helvetica", size=14), fill="#aaaaaa", anchor="w")
-        self.home_canvas.create_text(40, 185, text="Parth Chhabra", font=font.Font(family="Helvetica", size=16, weight="bold"), fill="#ffffff", anchor="w")
+        self.greet_id = self.home_canvas.create_text(40, 158, text="Loading...", font=font.Font(family="Helvetica", size=14), fill=TEXT_MUTED, anchor="w")
+        self.home_canvas.create_text(40, 184, text="Parth Chhabra", font=font.Font(family="Helvetica", size=16, weight="bold"), fill=TEXT_PRIMARY, anchor="w")
 
-        self._create_round_rect(self.home_canvas, 20, 240, 320, 440, radius=25, fill="#121212", stipple="gray50")
-        self.wx_canvas = tk.Canvas(self.home_canvas, width=280, height=180, bg="#121212", highlightthickness=0)
+        # --- Weather card ---
+        self._create_round_rect(self.home_canvas, 20, 240, 320, 440, radius=18, fill=CARD_BG)
+        self._draw_corner_brackets(self.home_canvas, 20, 240, 320, 440, ACCENT_AMBER, size=12, width=1)
+        self.wx_canvas = tk.Canvas(self.home_canvas, width=280, height=180, bg=CARD_BG, highlightthickness=0)
         self.wx_canvas.place(x=30, y=250)
-        self.weather_temp_id = self.wx_canvas.create_text(10, 40, text="--°C", font=font.Font(family="Helvetica", size=45, weight="bold"), fill="#ffffff", anchor="w")
-        self.wx_canvas.create_text(10, 100, text="Udaipur, Rajasthan", font=font.Font(family="Helvetica", size=12, weight="bold"), fill="#1db954", anchor="w")
-        self.weather_pop_id = self.wx_canvas.create_text(10, 140, text="Precipitation: --%", font=font.Font(family="Helvetica", size=12), fill="#aaaaaa", anchor="w")
-        self.weather_desc_id = self.wx_canvas.create_text(10, 160, text="Syncing Meteorology...", font=font.Font(family="Helvetica", size=12), fill="#aaaaaa", anchor="w")
+        self.weather_temp_id = self.wx_canvas.create_text(10, 40, text="--°C", font=font.Font(family="Helvetica", size=45, weight="bold"), fill=TEXT_PRIMARY, anchor="w")
+        self.wx_canvas.create_text(10, 100, text="Udaipur, Rajasthan", font=font.Font(family="Helvetica", size=12, weight="bold"), fill=ACCENT_AMBER, anchor="w")
+        self.weather_pop_id = self.wx_canvas.create_text(10, 140, text="Precipitation: --%", font=font.Font(family="Helvetica", size=12), fill=TEXT_MUTED, anchor="w")
+        self.weather_desc_id = self.wx_canvas.create_text(10, 160, text="Syncing Meteorology...", font=font.Font(family="Helvetica", size=12), fill=TEXT_MUTED, anchor="w")
         
         self.rain_particles = []
         self.sun_angle = 0
         self.current_weather_type = "Clear"
         self._animate_weather()
 
-        self._create_round_rect(self.home_canvas, 340, 20, 780, 200, radius=25, fill="#121212", stipple="gray50")
+        # --- Device battery card ---
+        self._create_round_rect(self.home_canvas, 340, 20, 780, 200, radius=18, fill=CARD_BG)
+        self._draw_corner_brackets(self.home_canvas, 340, 20, 780, 200, ACCENT_GREEN, size=12, width=1)
+        self.home_canvas.create_text(370, 35, text="D E V I C E   B A T T E R I E S", font=font.Font(family="Courier", size=9), fill=TEXT_DIM, anchor="w")
         self.batt_ui = {}
         devices = ["iPhone", "MacBook", "iPad"]
         for i, dev in enumerate(devices):
-            y_offset = 55 + (i * 45)
-            self.home_canvas.create_text(370, y_offset, text=dev, font=font.Font(family="Helvetica", size=12, weight="bold"), fill="#fff", anchor="w")
-            self.home_canvas.create_rectangle(480, y_offset-8, 720, y_offset+8, fill="#222222", outline="")
-            bar_id = self.home_canvas.create_rectangle(480, y_offset-8, 480, y_offset+8, fill="#ffffff", outline="")
-            text_id = self.home_canvas.create_text(750, y_offset, text="--%", font=font.Font(family="Helvetica", size=12), fill="#aaa", anchor="e")
+            y_offset = 65 + (i * 42)
+            self.home_canvas.create_text(370, y_offset, text=dev, font=font.Font(family="Helvetica", size=12, weight="bold"), fill=TEXT_PRIMARY, anchor="w")
+            self.home_canvas.create_rectangle(480, y_offset-8, 720, y_offset+8, fill=LINE, outline="")
+            bar_id = self.home_canvas.create_rectangle(480, y_offset-8, 480, y_offset+8, fill=TEXT_PRIMARY, outline="")
+            text_id = self.home_canvas.create_text(750, y_offset, text="--%", font=font.Font(family="Helvetica", size=12), fill=TEXT_MUTED, anchor="e")
             self.batt_ui[dev.lower()] = {"bar": bar_id, "text": text_id}
 
-        # 12-tile app grid: 4 columns x 3 rows, fits below the battery card and above the telemetry bar.
+        # 12-tile app grid: 4 columns x 3 rows. Color groups carry meaning, not decoration:
+        # cyan = infra/network tools, violet = the study suite, green = Spotify's own
+        # brand, neutral = system, red = power only.
         apps = [
-            ("AirPlay", "#1a1a1a", "#fff", self.launch_uxplay),
-            ("Spotify", "#0a2a10", "#1db954", lambda: self.nav_to("spotify")),
-            ("Study", "#12123a", "#88aaff", lambda: self.nav_to("study")),
-            ("Network", "#2a1a3a", "#aa88ff", lambda: self._trigger_netscan()),
-            ("Bookmarks", "#3a1a1a", "#ff88aa", lambda: self.nav_to("bookmarks")),
-            ("DPN VPN", "#112233", "#00aaff", lambda: self.nav_to("dpn")),
-            ("Notes", "#2a2a10", "#ffcc66", lambda: self.nav_to("notes")),
-            ("Flashcards", "#0a0a2a", "#88aaff", lambda: self.nav_to("flashcards")),
-            ("Tasks", "#0a1a0a", "#1db954", lambda: self.nav_to("tasks")),
-            ("Countdown", "#2a0a0a", "#ff8888", lambda: self.nav_to("countdown")),
-            ("Settings", "#222222", "#ddd", lambda: self.nav_to("settings")),
-            ("Power", "#2a0000", "#ff4444", self._show_power_menu)
+            ("AIRPLAY", ACCENT_CYAN, self.launch_uxplay),
+            ("SPOTIFY", ACCENT_GREEN, lambda: self.nav_to("spotify")),
+            ("STUDY", ACCENT_VIOLET, lambda: self.nav_to("study")),
+            ("NETWORK", ACCENT_CYAN, lambda: self._trigger_netscan()),
+            ("BOOKMARKS", ACCENT_CYAN, lambda: self.nav_to("bookmarks")),
+            ("DPN VPN", ACCENT_CYAN, lambda: self.nav_to("dpn")),
+            ("NOTES", ACCENT_VIOLET, lambda: self.nav_to("notes")),
+            ("FLASHCARDS", ACCENT_VIOLET, lambda: self.nav_to("flashcards")),
+            ("TASKS", ACCENT_VIOLET, lambda: self.nav_to("tasks")),
+            ("COUNTDOWN", ACCENT_VIOLET, lambda: self.nav_to("countdown")),
+            ("SETTINGS", TEXT_MUTED, lambda: self.nav_to("settings")),
+            ("POWER", ACCENT_RED, self._show_power_menu)
         ]
         
         self.app_hitboxes = []
@@ -658,7 +722,7 @@ class MatterDeskCore:
         tile_w, tile_h = 96, 68
         gap_x, gap_y = 8, 8
         start_x, start_y = 340, 220
-        for i, (name, bg, fg, cmd) in enumerate(apps):
+        for i, (name, accent, cmd) in enumerate(apps):
             col = i % cols
             row = i // cols
             x1 = start_x + col * (tile_w + gap_x)
@@ -666,8 +730,8 @@ class MatterDeskCore:
             x2 = x1 + tile_w
             y2 = y1 + tile_h
             
-            self._create_round_rect(self.home_canvas, x1, y1, x2, y2, radius=12, fill=bg)
-            self.home_canvas.create_text((x1+x2)//2, (y1+y2)//2, text=name, font=font.Font(family="Helvetica", size=10, weight="bold"), fill=fg, justify="center")
+            self._create_round_rect(self.home_canvas, x1, y1, x2, y2, radius=12, fill=CARD_BG, outline=accent, width=1)
+            self.home_canvas.create_text((x1+x2)//2, (y1+y2)//2, text=name, font=font.Font(family="Helvetica", size=10, weight="bold"), fill=accent, justify="center")
             self.app_hitboxes.append((x1, y1, x2, y2, cmd))
             
         self.home_canvas.bind("<Button-1>", self._handle_home_click)
@@ -729,7 +793,7 @@ class MatterDeskCore:
                 if p[1] > 180:
                     p[1] = 0
                     p[0] = int(time.time() * 1000) % 200 + 150
-                self.wx_canvas.create_line(p[0], p[1], p[0] - 2, p[1] + 10, fill="#88aaff", tags="rain")
+                self.wx_canvas.create_line(p[0], p[1], p[0] - 2, p[1] + 10, fill=ACCENT_CYAN, tags="rain")
         elif self.current_weather_type == "Clear":
             self.wx_canvas.delete("rain")
             self.wx_canvas.delete("sun")
@@ -794,14 +858,14 @@ class MatterDeskCore:
                 self.home_canvas.coords(self.batt_ui[ui_key]["bar"], base_x, self.home_canvas.coords(self.batt_ui[ui_key]["bar"])[1], base_x + width, self.home_canvas.coords(self.batt_ui[ui_key]["bar"])[3])
                 
                 if val >= 70:
-                    col = "#1db954"       
-                    range_col = "#0e4419" 
+                    col = ACCENT_GREEN
+                    range_col = "#0e4419"
                 elif val >= 30:
-                    col = "#88aaff"       
-                    range_col = "#223355" 
+                    col = ACCENT_CYAN
+                    range_col = "#1a3a4a"
                 else:
-                    col = "#ff4444"       
-                    range_col = "#4a1111" 
+                    col = ACCENT_RED
+                    range_col = "#4a1111"
                 
                 self.home_canvas.itemconfig(self.batt_ui[ui_key]["bar"], fill=col)
                 
@@ -823,106 +887,103 @@ class MatterDeskCore:
         f_pill = tk.Frame(self.root, bg="#2a0000")
         f_pill.place(x=0, y=0, relwidth=1, relheight=1)
         self.frames["pill"] = f_pill
-        tk.Button(f_pill, text="✕ CLOSE", font=self.font_sub, bg="#2a0000", fg="#ff4444", activebackground="#4a0000", bd=0, command=self.wake_display).pack(expand=True, fill="both")
+        tk.Button(f_pill, text="✕ CLOSE", font=self.font_sub, bg="#2a0000", fg=ACCENT_RED, activebackground="#4a0000", bd=0, command=self.wake_display).pack(expand=True, fill="both")
         
-        f_wait = tk.Frame(self.root, bg="#050505")
+        f_wait = tk.Frame(self.root, bg=BASE_BG)
         f_wait.place(x=0, y=0, relwidth=1, relheight=1)
         self.frames["waiting"] = f_wait
-        self.lbl_waiting = tk.Label(f_wait, text="Waiting...", font=self.font_header, fg="#ffffff", bg="#050505")
+        self.lbl_waiting = tk.Label(f_wait, text="Waiting...", font=self.font_header, fg=TEXT_PRIMARY, bg=BASE_BG)
         self.lbl_waiting.pack(pady=(150, 20))
-        tk.Button(f_wait, text="Cancel", font=self.font_sub, bg="#1a1a1a", fg="#ff4444", bd=0, command=self.wake_display).pack(ipadx=20, ipady=10)
+        tk.Button(f_wait, text="Cancel", font=self.font_sub, bg=CARD_BG, fg=ACCENT_RED, bd=0, command=self.wake_display).pack(ipadx=20, ipady=10)
 
     # ==========================================
     # DPN DECENTRALIZED PRIVATE NETWORK SUBSYSTEM (now functional)
     # ==========================================
     def _build_dpn_ui(self):
-        f = tk.Frame(self.root, bg="#0b0f19")
+        f = tk.Frame(self.root, bg=BASE_BG)
         f.place(x=0, y=0, relwidth=1, relheight=1)
         self.frames["dpn"] = f
         
-        top = tk.Frame(f, bg="#111625", height=50)
-        top.pack(fill="x")
-        tk.Button(top, text="< BACK", font=self.font_body, bg="#111625", fg="#fff", bd=0, command=lambda: self.nav_to("main")).pack(side="left", padx=10)
-        tk.Label(top, text="DRAFTSMAN DPN ARCHITECTURE", font=self.font_sub, fg="#00aaff", bg="#111625").pack(side="right", padx=20)
+        self._build_screen_header(f, "MOD.06", "DPN Architecture", lambda: self.nav_to("main"), accent=ACCENT_CYAN)
         
-        left_p = tk.Frame(f, bg="#0b0f19", width=380)
+        left_p = tk.Frame(f, bg=BASE_BG, width=380)
         left_p.pack(side="left", fill="both", expand=True, padx=20, pady=20)
         left_p.pack_propagate(False)
         
-        self.lbl_dpn_status = tk.Label(left_p, text="NETWORK STATE: OFFLINE", font=self.font_sub, fg="#ff4444", bg="#0b0f19", anchor="w")
+        self.lbl_dpn_status = tk.Label(left_p, text="NETWORK STATE: OFFLINE", font=self.font_sub, fg=ACCENT_RED, bg=BASE_BG, anchor="w")
         self.lbl_dpn_status.pack(fill="x", pady=5)
         
-        self.btn_dpn_toggle = tk.Button(left_p, text="ACTIVATE DPN CORE", font=self.font_sub, bg="#1a2a4a", fg="#00aaff", bd=0, command=self._toggle_dpn_engine)
+        self.btn_dpn_toggle = tk.Button(left_p, text="ACTIVATE DPN CORE", font=self.font_sub, bg=CARD_BG, fg=ACCENT_CYAN, bd=0, command=self._toggle_dpn_engine)
         self.btn_dpn_toggle.pack(fill="x", ipady=15, pady=10)
         
-        cfg_box = tk.LabelFrame(left_p, text=" Parameters Control ", font=self.font_body, fg="#888", bg="#0b0f19", bd=1)
+        cfg_box = tk.LabelFrame(left_p, text=" Parameters Control ", font=self.font_body, fg=TEXT_MUTED, bg=BASE_BG, bd=1, highlightbackground=LINE)
         cfg_box.pack(fill="both", expand=True, pady=5)
         
-        f_ssid = tk.Frame(cfg_box, bg="#0b0f19")
+        f_ssid = tk.Frame(cfg_box, bg=BASE_BG)
         f_ssid.pack(fill="x", padx=10, pady=5)
-        tk.Label(f_ssid, text="SSID Target:", font=self.font_body, fg="#fff", bg="#0b0f19").pack(side="left")
-        self.btn_dpn_ssid = tk.Button(f_ssid, text=self.dpn_ssid, font=self.font_body, bg="#111625", fg="#00aaff", bd=0, command=self._change_dpn_ssid)
+        tk.Label(f_ssid, text="SSID Target:", font=self.font_body, fg=TEXT_PRIMARY, bg=BASE_BG).pack(side="left")
+        self.btn_dpn_ssid = tk.Button(f_ssid, text=self.dpn_ssid, font=self.font_body, bg=CARD_BG, fg=ACCENT_CYAN, bd=0, command=self._change_dpn_ssid)
         self.btn_dpn_ssid.pack(side="right", padx=5)
 
-        f_cntry = tk.Frame(cfg_box, bg="#0b0f19")
+        f_cntry = tk.Frame(cfg_box, bg=BASE_BG)
         f_cntry.pack(fill="x", padx=10, pady=5)
-        tk.Label(f_cntry, text="Exit Gateway:", font=self.font_body, fg="#fff", bg="#0b0f19").pack(side="left")
-        self.btn_dpn_country = tk.Button(f_cntry, text=self.dpn_country, font=self.font_body, bg="#111625", fg="#00aaff", bd=0, command=self._select_dpn_country)
+        tk.Label(f_cntry, text="Exit Gateway:", font=self.font_body, fg=TEXT_PRIMARY, bg=BASE_BG).pack(side="left")
+        self.btn_dpn_country = tk.Button(f_cntry, text=self.dpn_country, font=self.font_body, bg=CARD_BG, fg=ACCENT_CYAN, bd=0, command=self._select_dpn_country)
         self.btn_dpn_country.pack(side="right", padx=5)
         
-        f_blk = tk.Frame(cfg_box, bg="#0b0f19")
+        f_blk = tk.Frame(cfg_box, bg=BASE_BG)
         f_blk.pack(fill="x", padx=10, pady=5)
-        tk.Label(f_blk, text="Ad/Tracker Blocking:", font=self.font_body, fg="#fff", bg="#0b0f19").pack(side="left")
-        self.btn_dpn_blk = tk.Button(f_blk, text="ENABLED", font=self.font_body, bg="#0a2a10", fg="#1db954", bd=0, command=self._toggle_dpn_adblock)
+        tk.Label(f_blk, text="Ad/Tracker Blocking:", font=self.font_body, fg=TEXT_PRIMARY, bg=BASE_BG).pack(side="left")
+        self.btn_dpn_blk = tk.Button(f_blk, text="ENABLED", font=self.font_body, bg=CARD_BG, fg=ACCENT_GREEN, bd=0, command=self._toggle_dpn_adblock)
         self.btn_dpn_blk.pack(side="right", padx=5)
 
-        f_vpn = tk.Frame(cfg_box, bg="#0b0f19")
+        f_vpn = tk.Frame(cfg_box, bg=BASE_BG)
         f_vpn.pack(fill="x", padx=10, pady=5)
-        tk.Label(f_vpn, text="Force Traffic via WireGuard:", font=self.font_body, fg="#fff", bg="#0b0f19").pack(side="left")
-        self.btn_dpn_forcevpn = tk.Button(f_vpn, text="OFF", font=self.font_body, bg="#333333", fg="#aaaaaa", bd=0, command=self._toggle_force_vpn)
+        tk.Label(f_vpn, text="Force Traffic via WireGuard:", font=self.font_body, fg=TEXT_PRIMARY, bg=BASE_BG).pack(side="left")
+        self.btn_dpn_forcevpn = tk.Button(f_vpn, text="OFF", font=self.font_body, bg=CARD_BG, fg=TEXT_MUTED, bd=0, command=self._toggle_force_vpn)
         self.btn_dpn_forcevpn.pack(side="right", padx=5)
 
         tk.Label(cfg_box, text=f"AP iface: {DPN_AP_IFACE}   WAN iface: {DPN_WAN_IFACE}\n(edit at top of matterdesk.py if wrong)",
-                 font=font.Font(size=9), fg="#555", bg="#0b0f19", justify="left").pack(anchor="w", padx=10, pady=(10, 0))
+                 font=font.Font(family="Courier", size=9), fg=TEXT_DIM, bg=BASE_BG, justify="left").pack(anchor="w", padx=10, pady=(10, 0))
 
-        right_p = tk.Frame(f, bg="#111625")
+        right_p = tk.Frame(f, bg=CARD_BG_ALT)
         right_p.pack(side="right", fill="both", expand=True, padx=20, pady=20)
         
-        tk.Label(right_p, text="ACTIVE CRYPTO CHANNELS", font=self.font_body, fg="#888", bg="#111625").pack(anchor="w", padx=15, pady=10)
-        self.dpn_monitor_canvas = tk.Canvas(right_p, bg="#050505", highlightthickness=0)
+        tk.Label(right_p, text="A C T I V E   C R Y P T O   C H A N N E L S", font=font.Font(family="Courier", size=9), fg=TEXT_DIM, bg=CARD_BG_ALT).pack(anchor="w", padx=15, pady=10)
+        self.dpn_monitor_canvas = tk.Canvas(right_p, bg=BASE_BG, highlightthickness=0)
         self.dpn_monitor_canvas.pack(fill="both", expand=True, padx=15, pady=(0, 15))
         self._render_dpn_canvas()
 
     def _render_dpn_canvas(self):
         self.dpn_monitor_canvas.delete("all")
         if not self.dpn_active:
-            self.dpn_monitor_canvas.create_text(180, 100, text="Tunnel Array Offline\nWaiting for Core Ignition Sequence...", fill="#444", font=self.font_body, justify="center")
+            self.dpn_monitor_canvas.create_text(180, 100, text="Tunnel Array Offline\nWaiting for Core Ignition Sequence...", fill=TEXT_DIM, font=self.font_body, justify="center")
             return
 
         uplink = WG_IFACE if self.dpn_force_vpn else DPN_WAN_IFACE
-        self.dpn_monitor_canvas.create_text(20, 25, text=f"● AP Interface: {DPN_AP_IFACE} ({self.dpn_ssid})", fill="#1db954", font=self.font_body, anchor="w")
-        self.dpn_monitor_canvas.create_text(20, 50, text=f"● WAN Uplink: {uplink}", fill="#1db954", font=self.font_body, anchor="w")
-        self.dpn_monitor_canvas.create_text(20, 75, text="● Secure Node IP: 10.45.0.1", fill="#00aaff", font=self.font_body, anchor="w")
-        self.dpn_monitor_canvas.create_text(20, 100, text=f"● Throughput: ↑{self.dpn_tx_rate:.1f} KB/s   ↓{self.dpn_rx_rate:.1f} KB/s", fill="#fff", font=self.font_body, anchor="w")
-        self.dpn_monitor_canvas.create_text(20, 130, text=f"Active Clients ({self.dpn_client_count}):", fill="#888", font=self.font_sub, anchor="w")
+        self.dpn_monitor_canvas.create_text(20, 25, text=f"● AP Interface: {DPN_AP_IFACE} ({self.dpn_ssid})", fill=ACCENT_GREEN, font=self.font_body, anchor="w")
+        self.dpn_monitor_canvas.create_text(20, 50, text=f"● WAN Uplink: {uplink}", fill=ACCENT_GREEN, font=self.font_body, anchor="w")
+        self.dpn_monitor_canvas.create_text(20, 75, text="● Secure Node IP: 10.45.0.1", fill=ACCENT_CYAN, font=self.font_body, anchor="w")
+        self.dpn_monitor_canvas.create_text(20, 100, text=f"● Throughput: ↑{self.dpn_tx_rate:.1f} KB/s   ↓{self.dpn_rx_rate:.1f} KB/s", fill=TEXT_PRIMARY, font=self.font_body, anchor="w")
+        self.dpn_monitor_canvas.create_text(20, 130, text=f"Active Clients ({self.dpn_client_count}):", fill=TEXT_MUTED, font=self.font_sub, anchor="w")
         y = 155
         for c in self.dpn_clients[:6]:
             self.dpn_monitor_canvas.create_text(30, y, text=f"{c['host']:<16} {c['ip']:<14} {c['mac']}", fill="#aaaaaa", font=font.Font(family="Courier", size=10), anchor="w")
             y += 22
         if not self.dpn_clients:
-            self.dpn_monitor_canvas.create_text(30, y, text="No clients associated yet.", fill="#555", font=self.font_body, anchor="w")
+            self.dpn_monitor_canvas.create_text(30, y, text="No clients associated yet.", fill=TEXT_DIM, font=self.font_body, anchor="w")
 
     def _toggle_dpn_engine(self):
         self.last_interaction = time.time()
         if self.dpn_active:
             self.log("DPN Decoupling Sequence Initiated.")
             self.dpn_active = False
-            self.lbl_dpn_status.config(text="NETWORK STATE: STOPPING...", fg="#ffaa00")
-            self.btn_dpn_toggle.config(text="ACTIVATE DPN CORE", bg="#1a2a4a", fg="#00aaff")
+            self.lbl_dpn_status.config(text="NETWORK STATE: STOPPING...", fg=ACCENT_AMBER)
+            self.btn_dpn_toggle.config(text="ACTIVATE DPN CORE", bg=CARD_BG, fg=ACCENT_CYAN)
             threading.Thread(target=self._dpn_stop_worker, daemon=True).start()
         else:
-            self.lbl_dpn_status.config(text="NETWORK STATE: STARTING...", fg="#ffaa00")
-            self.btn_dpn_toggle.config(text="STARTING...", bg="#333333", fg="#aaaaaa")
+            self.lbl_dpn_status.config(text="NETWORK STATE: STARTING...", fg=ACCENT_AMBER)
+            self.btn_dpn_toggle.config(text="STARTING...", bg=CARD_BG_ALT, fg=TEXT_MUTED)
             threading.Thread(target=self._dpn_start_worker, daemon=True).start()
 
     def _write_dpn_configs(self):
@@ -1068,33 +1129,30 @@ class MatterDeskCore:
     # CROSS-DEVICE BOOKMARKS MODULE
     # ==========================================
     def _build_bookmarks_ui(self):
-        f = tk.Frame(self.root, bg="#121212")
+        f = tk.Frame(self.root, bg=BASE_BG)
         f.place(x=0, y=0, relwidth=1, relheight=1)
         self.frames["bookmarks"] = f
         
-        top = tk.Frame(f, bg="#121212", height=40)
-        top.pack(fill="x", padx=10, pady=10)
-        tk.Button(top, text="< BACK", font=self.font_body, bg="#121212", fg="#fff", bd=0, command=lambda: self.nav_to("main")).pack(side="left")
-        tk.Label(top, text="CROSS-DEVICE BOOKMARKS", font=self.font_sub, fg="#ff88aa", bg="#121212").pack(side="right", padx=20)
+        self._build_screen_header(f, "MOD.05", "Cross-Device Bookmarks", lambda: self.nav_to("main"), accent=ACCENT_CYAN)
         
-        nav_row = tk.Frame(f, bg="#121212")
-        nav_row.pack(fill="x", padx=20, pady=5)
+        nav_row = tk.Frame(f, bg=BASE_BG)
+        nav_row.pack(fill="x", padx=20, pady=10)
         devices = ["MacBook", "Workstation", "Server"]
         for d in devices:
-            btn = tk.Button(nav_row, text=d.upper(), font=font.Font(size=10, weight="bold"), bg="#1a1a1a", fg="#ff88aa", bd=0, command=lambda dev=d: self._load_device_bookmarks(dev))
+            btn = tk.Button(nav_row, text=d.upper(), font=font.Font(size=10, weight="bold"), bg=CARD_BG, fg=ACCENT_CYAN, bd=0, command=lambda dev=d: self._load_device_bookmarks(dev))
             btn.pack(side="left", padx=5, ipady=8, expand=True, fill="x")
             
-        self.bm_canvas = tk.Canvas(f, bg="#050505", highlightthickness=0)
+        self.bm_canvas = tk.Canvas(f, bg=BASE_BG, highlightthickness=0)
         self.bm_canvas.pack(fill="both", expand=True, padx=20, pady=10)
         self._load_device_bookmarks("MacBook")
 
     def _load_device_bookmarks(self, device):
         self.bm_canvas.delete("all")
         if not getattr(self, 'firebase_active', False):
-            self.bm_canvas.create_text(380, 100, text="Firebase Link Dropped.", fill="#ff4444", font=self.font_body)
+            self.bm_canvas.create_text(380, 100, text="Firebase Link Dropped.", fill=ACCENT_RED, font=self.font_body)
             return
         
-        self.bm_canvas.create_text(20, 20, text=f"Querying nodes for {device}...", fill="#888", font=self.font_body, anchor="w")
+        self.bm_canvas.create_text(20, 20, text=f"Querying nodes for {device}...", fill=TEXT_MUTED, font=self.font_body, anchor="w")
         threading.Thread(target=self._fetch_bookmarks_worker, args=(device,), daemon=True).start()
 
     def _fetch_bookmarks_worker(self, device):
@@ -1111,12 +1169,12 @@ class MatterDeskCore:
                 
             self.root.after(0, lambda: self._render_bookmarks(links))
         except Exception as e:
-            self.root.after(0, lambda: self.bm_canvas.create_text(20, 50, text=f"Fetch Error: {e}", fill="#ff4444", font=self.font_body, anchor="w"))
+            self.root.after(0, lambda: self.bm_canvas.create_text(20, 50, text=f"Fetch Error: {e}", fill=ACCENT_RED, font=self.font_body, anchor="w"))
 
     def _render_bookmarks(self, links):
         self.bm_canvas.delete("all")
         if not links:
-            self.bm_canvas.create_text(20, 30, text="No active bookmarks indexed under this profile node.", fill="#666666", font=self.font_body, anchor="w")
+            self.bm_canvas.create_text(20, 30, text="No active bookmarks indexed under this profile node.", fill=TEXT_DIM, font=self.font_body, anchor="w")
             return
         
         y = 30
@@ -1129,44 +1187,40 @@ class MatterDeskCore:
             clean_title = title[:45] + "..." if len(title) > 45 else title
             clean_url = url[:55] + "..." if len(url) > 55 else url
             
-            self.bm_canvas.create_text(20, y, text=clean_title, fill="#ffffff", font=self.font_sub, anchor="w")
-            self.bm_canvas.create_text(340, y, text=clean_url, fill="#ff88aa", font=font.Font(family="Courier", size=11), anchor="w")
+            self.bm_canvas.create_text(20, y, text=clean_title, fill=TEXT_PRIMARY, font=self.font_sub, anchor="w")
+            self.bm_canvas.create_text(340, y, text=clean_url, fill=ACCENT_CYAN, font=font.Font(family="Courier", size=11), anchor="w")
             y += 35
 
     # ==========================================
     # NETWORK MAPPER (now: ip neigh + vendor guess + block + deep scan)
     # ==========================================
     def _build_network_ui(self):
-        f = tk.Frame(self.root, bg="#121212")
+        f = tk.Frame(self.root, bg=BASE_BG)
         f.place(x=0, y=0, relwidth=1, relheight=1)
         self.frames["network"] = f
         
-        top = tk.Frame(f, bg="#121212", height=40)
-        top.pack(fill="x", padx=10, pady=10)
-        tk.Button(top, text="< BACK", font=self.font_body, bg="#121212", fg="#fff", bd=0, command=lambda: self.nav_to("main")).pack(side="left")
-        tk.Label(top, text="NETWORK MAPPER", font=self.font_sub, fg="#aa88ff", bg="#121212").pack(side="left", padx=20)
-        self.btn_net_autoscan = tk.Button(top, text="AUTO-SCAN: ON", font=font.Font(size=10, weight="bold"), bg="#0a2a10", fg="#1db954", bd=0, command=self._toggle_net_autoscan)
-        self.btn_net_autoscan.pack(side="right", padx=5)
-        tk.Button(top, text="DEEP SCAN", font=font.Font(size=10, weight="bold"), bg="#1a2a4a", fg="#88aaff", bd=0, command=self._trigger_deep_scan).pack(side="right", padx=5)
+        header_right = self._build_screen_header(f, "MOD.03", "Network Mapper", lambda: self.nav_to("main"), accent=ACCENT_CYAN)
+        self.btn_net_autoscan = tk.Button(header_right, text="AUTO-SCAN: ON", font=font.Font(size=9, weight="bold"), bg=CARD_BG, fg=ACCENT_GREEN, bd=0, command=self._toggle_net_autoscan)
+        self.btn_net_autoscan.pack(side="right", padx=3)
+        tk.Button(header_right, text="DEEP SCAN", font=font.Font(size=9, weight="bold"), bg=CARD_BG, fg=ACCENT_CYAN, bd=0, command=self._trigger_deep_scan).pack(side="right", padx=3)
         
-        self.net_canvas = tk.Canvas(f, bg="#050505", highlightthickness=0)
+        self.net_canvas = tk.Canvas(f, bg=BASE_BG, highlightthickness=0)
         self.net_canvas.pack(fill="both", expand=True, padx=20, pady=10)
 
     def _toggle_net_autoscan(self):
         self.net_autoscan = not self.net_autoscan
         self.btn_net_autoscan.config(text=f"AUTO-SCAN: {'ON' if self.net_autoscan else 'OFF'}",
-                                      bg="#0a2a10" if self.net_autoscan else "#333333",
-                                      fg="#1db954" if self.net_autoscan else "#aaaaaa")
+                                      fg=ACCENT_GREEN if self.net_autoscan else TEXT_MUTED)
 
     def _trigger_netscan(self):
         self.nav_to("network")
         self.net_canvas.delete("all")
-        self.net_canvas.create_text(20, 20, text="Querying kernel neighbor table...", fill="#aaaaaa", font=self.font_body, anchor="w")
+        self.net_canvas.create_text(20, 20, text="Querying kernel neighbor table...", fill=TEXT_MUTED, font=self.font_body, anchor="w")
         threading.Thread(target=self._exec_network_scan, daemon=True).start()
 
     def _trigger_deep_scan(self):
         self.net_canvas.delete("all")
-        self.net_canvas.create_text(20, 20, text="Running deep nmap sweep (may take up to 30s)...", fill="#aaaaaa", font=self.font_body, anchor="w")
+        self.net_canvas.create_text(20, 20, text="Running deep nmap sweep (may take up to 30s)...", fill=TEXT_MUTED, font=self.font_body, anchor="w")
         threading.Thread(target=self._exec_deep_scan, daemon=True).start()
 
     def _exec_deep_scan(self):
@@ -1201,27 +1255,27 @@ class MatterDeskCore:
                 nodes.append({'ip': ip, 'mac': mac, 'host': host, 'vendor': guess_vendor(mac), 'state': state})
             self.root.after(0, lambda n=nodes: self._render_netscan(n))
         except Exception as e:
-            self.root.after(0, lambda: self.net_canvas.create_text(20, 50, text=f"Scan Failed: {e}", fill="#ff4444", font=self.font_body, anchor="w"))
+            self.root.after(0, lambda: self.net_canvas.create_text(20, 50, text=f"Scan Failed: {e}", fill=ACCENT_RED, font=self.font_body, anchor="w"))
 
     def _render_netscan(self, nodes):
         self.net_canvas.delete("all")
         if not nodes:
-            self.net_canvas.create_text(20, 20, text="No nodes found in the neighbor table.", fill="#aaaaaa", font=self.font_body, anchor="w")
+            self.net_canvas.create_text(20, 20, text="No nodes found in the neighbor table.", fill=TEXT_MUTED, font=self.font_body, anchor="w")
             return
 
-        container = tk.Frame(self.net_canvas, bg="#050505")
+        container = tk.Frame(self.net_canvas, bg=BASE_BG)
         self.net_canvas.create_window((0, 0), window=container, anchor="nw", width=740)
-        tk.Label(container, text=f"Discovered {len(nodes)} active nodes:", fg="#aa88ff", bg="#050505", font=self.font_sub, anchor="w").pack(fill="x", pady=(0, 10))
+        tk.Label(container, text=f"Discovered {len(nodes)} active nodes:", fg=ACCENT_CYAN, bg=BASE_BG, font=self.font_sub, anchor="w").pack(fill="x", pady=(0, 10))
         for n in nodes:
-            row = tk.Frame(container, bg="#0a0a0a")
+            row = tk.Frame(container, bg=CARD_BG)
             row.pack(fill="x", pady=2)
-            tk.Label(row, text=n['ip'], fg="#1db954", bg="#0a0a0a", font=font.Font(family="Courier", size=11, weight="bold"), width=15, anchor="w").pack(side="left")
-            tk.Label(row, text=n['mac'], fg="#aaaaaa", bg="#0a0a0a", font=font.Font(family="Courier", size=11), width=18, anchor="w").pack(side="left")
-            tk.Label(row, text=n['vendor'], fg="#88aaff", bg="#0a0a0a", font=self.font_body, width=16, anchor="w").pack(side="left")
-            tk.Label(row, text=n['host'][:18], fg="#ffffff", bg="#0a0a0a", font=self.font_body, width=18, anchor="w").pack(side="left")
+            tk.Label(row, text=n['ip'], fg=ACCENT_GREEN, bg=CARD_BG, font=font.Font(family="Courier", size=11, weight="bold"), width=15, anchor="w").pack(side="left")
+            tk.Label(row, text=n['mac'], fg=TEXT_MUTED, bg=CARD_BG, font=font.Font(family="Courier", size=11), width=18, anchor="w").pack(side="left")
+            tk.Label(row, text=n['vendor'], fg=ACCENT_CYAN, bg=CARD_BG, font=self.font_body, width=16, anchor="w").pack(side="left")
+            tk.Label(row, text=n['host'][:18], fg=TEXT_PRIMARY, bg=CARD_BG, font=self.font_body, width=18, anchor="w").pack(side="left")
             blocked = n['mac'].upper() in self.blocked_macs
             tk.Button(row, text="UNBLOCK" if blocked else "BLOCK", font=font.Font(size=9, weight="bold"),
-                      bg="#0a2a10" if blocked else "#2a0000", fg="#1db954" if blocked else "#ff4444", bd=0,
+                      bg=CARD_BG_ALT, fg=ACCENT_GREEN if blocked else ACCENT_RED, bd=0,
                       command=lambda m=n['mac']: self._toggle_block_mac(m)).pack(side="right", padx=5)
         self.net_canvas.update_idletasks()
         self.net_canvas.config(scrollregion=self.net_canvas.bbox("all"))
@@ -1253,7 +1307,11 @@ class MatterDeskCore:
         self.frames["standby"] = f
         self.ss_canvas = tk.Canvas(f, bg="#000000", highlightthickness=0)
         self.ss_canvas.pack(fill="both", expand=True)
-        self.ss_text = self.ss_canvas.create_text(400, 240, text="00:00", font=font.Font(family="Helvetica", size=40, weight="bold"), fill="#222222")
+        # Faint static dot-grid — a low-effort nod to the blueprint theme that costs nothing at night.
+        for gx in range(0, 800, 40):
+            for gy in range(0, 480, 40):
+                self.ss_canvas.create_oval(gx, gy, gx + 1, gy + 1, fill="#111820", outline="")
+        self.ss_text = self.ss_canvas.create_text(400, 240, text="00:00", font=font.Font(family="Helvetica", size=40, weight="bold"), fill="#173040")
         self.ss_x, self.ss_y = 400, 240
         self.ss_dx, self.ss_dy = 2, 2
 
@@ -1284,46 +1342,46 @@ class MatterDeskCore:
             self.log(f"Firebase Init Error: {e}")
 
     def _build_study_ui(self):
-        f = tk.Frame(self.root, bg="#050505")
+        f = tk.Frame(self.root, bg=BASE_BG)
         f.place(x=0, y=0, relwidth=1, relheight=1)
         self.frames["study"] = f
         
-        eng = tk.Frame(f, bg="#050505", width=350)
+        eng = tk.Frame(f, bg=BASE_BG, width=350)
         eng.pack(side="left", fill="y", padx=20, pady=20)
         eng.pack_propagate(False)
         
-        tk.Button(eng, text="< ABORT", font=self.font_body, bg="#1a1a1a", fg="#ff4444", bd=0, command=self._exit_study).pack(anchor="w")
-        tk.Label(eng, text="Hello Parth Chhabra,", font=self.font_sub, fg="#88aaff", bg="#050505", anchor="w").pack(fill="x", pady=(20,0))
-        tk.Label(eng, text="What would you like to study today?", font=self.font_body, fg="#888", bg="#050505", anchor="w").pack(fill="x", pady=(0,20))
+        tk.Button(eng, text="‹ ABORT", font=self.font_body, bg=CARD_BG, fg=ACCENT_RED, bd=0, command=self._exit_study).pack(anchor="w")
+        tk.Label(eng, text="Hello Parth Chhabra,", font=self.font_sub, fg=ACCENT_VIOLET, bg=BASE_BG, anchor="w").pack(fill="x", pady=(20,0))
+        tk.Label(eng, text="What would you like to study today?", font=self.font_body, fg=TEXT_MUTED, bg=BASE_BG, anchor="w").pack(fill="x", pady=(0,20))
         
-        self.ring_canvas = tk.Canvas(eng, width=200, height=200, bg="#050505", highlightthickness=0)
+        self.ring_canvas = tk.Canvas(eng, width=200, height=200, bg=BASE_BG, highlightthickness=0)
         self.ring_canvas.pack(pady=10)
-        self.lbl_timer = tk.Label(eng, text="00:00:00", font=font.Font(family="Helvetica", size=40, weight="bold"), fg="#fff", bg="#050505")
+        self.lbl_timer = tk.Label(eng, text="00:00:00", font=font.Font(family="Helvetica", size=40, weight="bold"), fg=TEXT_PRIMARY, bg=BASE_BG)
         self.lbl_timer.place(relx=0.5, rely=0.45, anchor="center")
-        self.lbl_target = tk.Label(eng, text="Target: None", font=self.font_body, fg="#888", bg="#050505")
+        self.lbl_target = tk.Label(eng, text="Target: None", font=self.font_body, fg=TEXT_MUTED, bg=BASE_BG)
         self.lbl_target.place(relx=0.5, rely=0.65, anchor="center")
 
-        ctrl_frame = tk.Frame(eng, bg="#050505")
+        ctrl_frame = tk.Frame(eng, bg=BASE_BG)
         ctrl_frame.pack(fill="x", pady=10)
-        self.btn_subj = tk.Button(ctrl_frame, text="Maths", font=font.Font(size=10, weight="bold"), bg="#1a1a1a", fg="#fff", bd=0, command=self._trigger_subj_modal)
+        self.btn_subj = tk.Button(ctrl_frame, text="Maths", font=font.Font(size=10, weight="bold"), bg=CARD_BG, fg=TEXT_PRIMARY, bd=0, command=self._trigger_subj_modal)
         self.btn_subj.pack(side="left", fill="x", expand=True, padx=5, ipady=8)
-        self.btn_dur = tk.Button(ctrl_frame, text="Set Time", font=font.Font(size=10, weight="bold"), bg="#1a1a1a", fg="#fff", bd=0, command=self._trigger_dur_modal)
+        self.btn_dur = tk.Button(ctrl_frame, text="Set Time", font=font.Font(size=10, weight="bold"), bg=CARD_BG, fg=TEXT_PRIMARY, bd=0, command=self._trigger_dur_modal)
         self.btn_dur.pack(side="left", fill="x", expand=True, padx=5, ipady=8)
-        self.btn_toggle_timer = tk.Button(eng, text="START SPRINT", font=self.font_sub, bg="#1db954", fg="#fff", bd=0, command=self._toggle_timer)
+        self.btn_toggle_timer = tk.Button(eng, text="START SPRINT", font=self.font_sub, bg=ACCENT_VIOLET, fg="#0a0a12", bd=0, command=self._toggle_timer)
         self.btn_toggle_timer.pack(fill="x", ipady=12)
 
-        tsk = tk.Frame(f, bg="#121212")
+        tsk = tk.Frame(f, bg=CARD_BG_ALT)
         tsk.pack(side="right", fill="both", expand=True, padx=20, pady=20)
-        top_right = tk.Frame(tsk, bg="#121212")
+        top_right = tk.Frame(tsk, bg=CARD_BG_ALT)
         top_right.pack(fill="x", padx=10, pady=10)
-        tk.Label(top_right, text="Study History", font=self.font_sub, fg="#fff", bg="#121212").pack(side="left")
-        tk.Button(top_right, text="LAUNCH TELEMETRY", font=font.Font(size=10, weight="bold"), bg="#1a2a4a", fg="#88aaff", bd=0, command=self._trigger_analytics).pack(side="right", ipadx=10, ipady=5)
+        tk.Label(top_right, text="S T U D Y   H I S T O R Y", font=font.Font(family="Courier", size=9), fg=TEXT_DIM, bg=CARD_BG_ALT).pack(side="left")
+        tk.Button(top_right, text="LAUNCH TELEMETRY", font=font.Font(size=10, weight="bold"), bg=CARD_BG, fg=ACCENT_VIOLET, bd=0, command=self._trigger_analytics).pack(side="right", ipadx=10, ipady=5)
         
-        self.heatmap_canvas = tk.Canvas(tsk, height=120, bg="#121212", highlightthickness=0)
+        self.heatmap_canvas = tk.Canvas(tsk, height=120, bg=CARD_BG_ALT, highlightthickness=0)
         self.heatmap_canvas.pack(fill="x", padx=10, pady=10)
-        self.history_list_canvas = tk.Canvas(tsk, bg="#121212", highlightthickness=0, height=80)
+        self.history_list_canvas = tk.Canvas(tsk, bg=CARD_BG_ALT, highlightthickness=0, height=80)
         self.history_list_canvas.pack(fill="x", padx=10, pady=(0, 10))
-        self._draw_visceral_ring(360, "#333333")
+        self._draw_visceral_ring(360, LINE)
 
         # --- ABSOLUTE FRAME BOUNDING ---
         f_abs = tk.Frame(self.root, bg="#000000")
@@ -1332,14 +1390,14 @@ class MatterDeskCore:
         
         self.abs_canvas = tk.Canvas(f_abs, bg="#000000", highlightthickness=0)
         self.abs_canvas.pack(fill="both", expand=True)
-        self.abs_text = self.abs_canvas.create_text(400, 240, text="00:00:00", font=font.Font(family="Helvetica", size=90, weight="bold"), fill="#1db954")
+        self.abs_text = self.abs_canvas.create_text(400, 240, text="00:00:00", font=font.Font(family="Helvetica", size=90, weight="bold"), fill=ACCENT_VIOLET)
         self.abs_canvas.bind("<Button-1>", lambda e: self.nav_to("study"))
 
     def _draw_visceral_ring(self, extent, color):
         if not hasattr(self, 'ring_canvas') or not self.ring_canvas.winfo_exists():
             return
         self.ring_canvas.delete("ring")
-        self.ring_canvas.create_oval(10, 10, 190, 190, outline="#1a1a1a", width=10, tags="ring")
+        self.ring_canvas.create_oval(10, 10, 190, 190, outline=LINE, width=10, tags="ring")
         if extent > 0: 
             self.ring_canvas.create_arc(10, 10, 190, 190, start=90, extent=-extent, outline=color, style=tk.ARC, width=10, tags="ring")
 
@@ -1369,7 +1427,7 @@ class MatterDeskCore:
         if self.study_active:
             self.study_active = False
             self.prevent_sleep = False
-            self.btn_toggle_timer.config(text="START SPRINT", bg="#1db954")
+            self.btn_toggle_timer.config(text="START SPRINT", bg=ACCENT_VIOLET)
             if self.study_job: self.root.after_cancel(self.study_job)
             if getattr(self, 'firebase_active', False) and self.study_seconds >= 5:
                 self.log(f"Initiating Firebase sync for {self.study_seconds}s of {self.current_subject.get()}")
@@ -1380,16 +1438,16 @@ class MatterDeskCore:
             self.lbl_timer.config(text="00:00:00")
             self.abs_canvas.itemconfig(self.abs_text, text="00:00:00")
             self.lbl_target.config(text="Target: None")
-            self._draw_visceral_ring(360, "#333")
+            self._draw_visceral_ring(360, LINE)
         else:
             if self.total_target_seconds == 0:
-                self.lbl_target.config(text="SELECT DURATION FIRST", fg="#ff4444")
-                self.root.after(2000, lambda: self.lbl_target.config(text="Target: None", fg="#888"))
+                self.lbl_target.config(text="SELECT DURATION FIRST", fg=ACCENT_RED)
+                self.root.after(2000, lambda: self.lbl_target.config(text="Target: None", fg=TEXT_MUTED))
                 return
             self.study_active = True
             self.prevent_sleep = True
             self.log(f"Sprint Started: {self.current_subject.get()} for {self.total_target_seconds}s")
-            self.btn_toggle_timer.config(text="END SPRINT", bg="#ff4444")
+            self.btn_toggle_timer.config(text="END SPRINT", bg=ACCENT_RED)
             self.root.after(10000, self._check_and_enter_absolute)
             self._tick_timer()
 
@@ -1409,7 +1467,7 @@ class MatterDeskCore:
         
         ratio = remaining / self.total_target_seconds if self.total_target_seconds else 0
         extent = ratio * 360
-        color = "#1db954" if ratio > 0.5 else ("#ffaa00" if ratio > 0.2 else "#ff4444")
+        color = ACCENT_GREEN if ratio > 0.5 else (ACCENT_AMBER if ratio > 0.2 else ACCENT_RED)
         self._draw_visceral_ring(extent, color)
         if remaining <= 0:
             self._toggle_timer()
@@ -1499,30 +1557,27 @@ class MatterDeskCore:
     # NOTES APP (new)
     # ==========================================
     def _build_notes_ui(self):
-        f = tk.Frame(self.root, bg="#121212")
+        f = tk.Frame(self.root, bg=BASE_BG)
         f.place(x=0, y=0, relwidth=1, relheight=1)
         self.frames["notes"] = f
-        top = tk.Frame(f, bg="#121212", height=40)
-        top.pack(fill="x", padx=10, pady=5)
-        tk.Button(top, text="< BACK", font=self.font_body, bg="#121212", fg="#fff", bd=0, command=lambda: self.nav_to("main")).pack(side="left")
-        tk.Label(top, text="QUICK NOTES", font=self.font_sub, fg="#ffcc66", bg="#121212").pack(side="right", padx=20)
+        self._build_screen_header(f, "MOD.07", "Quick Notes", lambda: self.nav_to("main"), accent=ACCENT_VIOLET)
 
-        left = tk.Frame(f, bg="#121212", width=190)
+        left = tk.Frame(f, bg=BASE_BG, width=190)
         left.pack(side="left", fill="y", padx=(10, 0), pady=10)
         left.pack_propagate(False)
-        tk.Button(left, text="+ NEW NOTE", font=self.font_body, bg="#2a2a10", fg="#ffcc66", bd=0, command=self._new_note).pack(fill="x", pady=(0, 5), ipady=8)
-        self.notes_list_frame = tk.Frame(left, bg="#121212")
+        tk.Button(left, text="+ NEW NOTE", font=self.font_body, bg=CARD_BG, fg=ACCENT_VIOLET, bd=0, command=self._new_note).pack(fill="x", pady=(0, 5), ipady=8)
+        self.notes_list_frame = tk.Frame(left, bg=BASE_BG)
         self.notes_list_frame.pack(fill="both", expand=True)
 
-        right = tk.Frame(f, bg="#0a0a0a")
+        right = tk.Frame(f, bg=CARD_BG_ALT)
         right.pack(side="right", fill="both", expand=True, padx=10, pady=10)
-        self.notes_text = tk.Text(right, bg="#0a0a0a", fg="#fff", font=("Helvetica", 13), bd=0, highlightthickness=1, highlightbackground="#333", wrap="word", height=7)
+        self.notes_text = tk.Text(right, bg=CARD_BG_ALT, fg=TEXT_PRIMARY, font=("Helvetica", 13), bd=0, highlightthickness=1, highlightbackground=LINE, wrap="word", height=7)
         self.notes_text.pack(fill="x", pady=(0, 5))
-        btn_row = tk.Frame(right, bg="#0a0a0a")
+        btn_row = tk.Frame(right, bg=CARD_BG_ALT)
         btn_row.pack(fill="x")
-        tk.Button(btn_row, text="SAVE", font=self.font_body, bg="#0a2a10", fg="#1db954", bd=0, command=self._save_current_note).pack(side="left", ipadx=15, ipady=8, padx=(0, 5))
-        tk.Button(btn_row, text="DELETE", font=self.font_body, bg="#2a0000", fg="#ff4444", bd=0, command=self._delete_current_note).pack(side="left", ipadx=15, ipady=8)
-        kbd_frame = tk.Frame(right, bg="#0a0a0a")
+        tk.Button(btn_row, text="SAVE", font=self.font_body, bg=CARD_BG, fg=ACCENT_GREEN, bd=0, command=self._save_current_note).pack(side="left", ipadx=15, ipady=8, padx=(0, 5))
+        tk.Button(btn_row, text="DELETE", font=self.font_body, bg=CARD_BG, fg=ACCENT_RED, bd=0, command=self._delete_current_note).pack(side="left", ipadx=15, ipady=8)
+        kbd_frame = tk.Frame(right, bg=CARD_BG_ALT)
         kbd_frame.pack(fill="both", expand=True, pady=10)
         self._build_generic_osk(kbd_frame, self.notes_text)
 
@@ -1535,7 +1590,7 @@ class MatterDeskCore:
             w.destroy()
         for key in sorted(self.notes_data.keys(), reverse=True):
             title = self.notes_data[key].get('title', key)
-            tk.Button(self.notes_list_frame, text=title[:20], font=font.Font(size=10), bg="#1a1a1a", fg="#ddd", bd=0, anchor="w",
+            tk.Button(self.notes_list_frame, text=title[:20], font=font.Font(size=10), bg=CARD_BG, fg=TEXT_PRIMARY, bd=0, anchor="w",
                       command=lambda k=key: self._open_note(k)).pack(fill="x", pady=2, ipady=6)
 
     def _new_note(self):
@@ -1572,30 +1627,27 @@ class MatterDeskCore:
     # FLASHCARDS APP (new) - JEE revision cards by subject
     # ==========================================
     def _build_flashcards_ui(self):
-        f = tk.Frame(self.root, bg="#0a0a1a")
+        f = tk.Frame(self.root, bg=BASE_BG)
         f.place(x=0, y=0, relwidth=1, relheight=1)
         self.frames["flashcards"] = f
-        top = tk.Frame(f, bg="#0a0a1a", height=40)
-        top.pack(fill="x", padx=10, pady=5)
-        tk.Button(top, text="< BACK", font=self.font_body, bg="#0a0a1a", fg="#fff", bd=0, command=lambda: self.nav_to("main")).pack(side="left")
-        tk.Label(top, text="REVISION FLASHCARDS", font=self.font_sub, fg="#88aaff", bg="#0a0a1a").pack(side="right", padx=20)
+        self._build_screen_header(f, "MOD.08", "Revision Flashcards", lambda: self.nav_to("main"), accent=ACCENT_VIOLET)
 
-        subj_row = tk.Frame(f, bg="#0a0a1a")
-        subj_row.pack(fill="x", padx=20)
+        subj_row = tk.Frame(f, bg=BASE_BG)
+        subj_row.pack(fill="x", padx=20, pady=10)
         self.fc_subject = tk.StringVar(value="Maths")
         for s in ["Maths", "Physics", "Ochem", "Pchem", "Ichem", "Other"]:
-            tk.Button(subj_row, text=s, font=font.Font(size=10, weight="bold"), bg="#1a1a2a", fg="#88aaff", bd=0,
+            tk.Button(subj_row, text=s, font=font.Font(size=10, weight="bold"), bg=CARD_BG, fg=ACCENT_VIOLET, bd=0,
                       command=lambda s=s: self._switch_fc_subject(s)).pack(side="left", padx=3, ipady=6, expand=True, fill="x")
 
-        self.fc_canvas = tk.Canvas(f, bg="#111133", highlightthickness=0, height=250)
+        self.fc_canvas = tk.Canvas(f, bg=CARD_BG_ALT, highlightthickness=0, height=250)
         self.fc_canvas.pack(fill="x", padx=40, pady=15)
         self.fc_canvas.bind("<Button-1>", lambda e: self._flip_fc())
 
-        ctrl = tk.Frame(f, bg="#0a0a1a")
+        ctrl = tk.Frame(f, bg=BASE_BG)
         ctrl.pack(fill="x", padx=20)
-        tk.Button(ctrl, text="◀ PREV", font=self.font_body, bg="#1a1a1a", fg="#fff", bd=0, command=lambda: self._nav_fc(-1)).pack(side="left", ipadx=15, ipady=8)
-        tk.Button(ctrl, text="+ ADD CARD", font=self.font_body, bg="#1a2a4a", fg="#88aaff", bd=0, command=self._add_fc_card).pack(side="left", padx=10, ipadx=15, ipady=8)
-        tk.Button(ctrl, text="NEXT ▶", font=self.font_body, bg="#1a1a1a", fg="#fff", bd=0, command=lambda: self._nav_fc(1)).pack(side="right", ipadx=15, ipady=8)
+        tk.Button(ctrl, text="◀ PREV", font=self.font_body, bg=CARD_BG, fg=TEXT_PRIMARY, bd=0, command=lambda: self._nav_fc(-1)).pack(side="left", ipadx=15, ipady=8)
+        tk.Button(ctrl, text="+ ADD CARD", font=self.font_body, bg=CARD_BG, fg=ACCENT_VIOLET, bd=0, command=self._add_fc_card).pack(side="left", padx=10, ipadx=15, ipady=8)
+        tk.Button(ctrl, text="NEXT ▶", font=self.font_body, bg=CARD_BG, fg=TEXT_PRIMARY, bd=0, command=lambda: self._nav_fc(1)).pack(side="right", ipadx=15, ipady=8)
 
         self.flashcards_data = self._load_json(FLASHCARDS_FILE, {})
         self.fc_index = 0
@@ -1615,13 +1667,13 @@ class MatterDeskCore:
         self.fc_canvas.delete("all")
         cards = self._current_fc_list()
         if not cards:
-            self.fc_canvas.create_text(360, 120, text="No cards yet for this subject.\nTap + ADD CARD to create one.", fill="#666", font=self.font_body, justify="center")
+            self.fc_canvas.create_text(360, 120, text="No cards yet for this subject.\nTap + ADD CARD to create one.", fill=TEXT_DIM, font=self.font_body, justify="center")
             return
         self.fc_index %= len(cards)
         card = cards[self.fc_index]
         text = card['back'] if self.fc_showing_back else card['front']
-        color = "#1db954" if self.fc_showing_back else "#88aaff"
-        self.fc_canvas.create_text(360, 25, text=f"Card {self.fc_index+1}/{len(cards)}  ({'ANSWER' if self.fc_showing_back else 'QUESTION'} — tap to flip)", fill="#666", font=self.font_body)
+        color = ACCENT_GREEN if self.fc_showing_back else ACCENT_VIOLET
+        self.fc_canvas.create_text(360, 25, text=f"Card {self.fc_index+1}/{len(cards)}  ({'ANSWER' if self.fc_showing_back else 'QUESTION'} — tap to flip)", fill=TEXT_DIM, font=self.font_body)
         self.fc_canvas.create_text(360, 135, text=text, fill=color, font=font.Font(size=16, weight="bold"), width=600, justify="center")
 
     def _flip_fc(self):
@@ -1650,16 +1702,13 @@ class MatterDeskCore:
     # TASKS APP (new) - simple to-do list
     # ==========================================
     def _build_tasks_ui(self):
-        f = tk.Frame(self.root, bg="#0a1a0a")
+        f = tk.Frame(self.root, bg=BASE_BG)
         f.place(x=0, y=0, relwidth=1, relheight=1)
         self.frames["tasks"] = f
-        top = tk.Frame(f, bg="#0a1a0a", height=40)
-        top.pack(fill="x", padx=10, pady=5)
-        tk.Button(top, text="< BACK", font=self.font_body, bg="#0a1a0a", fg="#fff", bd=0, command=lambda: self.nav_to("main")).pack(side="left")
-        tk.Label(top, text="TASK LIST", font=self.font_sub, fg="#1db954", bg="#0a1a0a").pack(side="right", padx=20)
-        self.tasks_list_frame = tk.Frame(f, bg="#0a1a0a")
+        self._build_screen_header(f, "MOD.09", "Task List", lambda: self.nav_to("main"), accent=ACCENT_VIOLET)
+        self.tasks_list_frame = tk.Frame(f, bg=BASE_BG)
         self.tasks_list_frame.pack(fill="both", expand=True, padx=20, pady=10)
-        tk.Button(f, text="+ ADD TASK", font=self.font_sub, bg="#0a2a10", fg="#1db954", bd=0, command=self._add_task_modal).pack(fill="x", padx=20, pady=10, ipady=10)
+        tk.Button(f, text="+ ADD TASK", font=self.font_sub, bg=CARD_BG, fg=ACCENT_VIOLET, bd=0, command=self._add_task_modal).pack(fill="x", padx=20, pady=10, ipady=10)
         self.tasks_data = self._load_json(TASKS_FILE, [])
         self._render_tasks()
 
@@ -1667,16 +1716,16 @@ class MatterDeskCore:
         for w in self.tasks_list_frame.winfo_children():
             w.destroy()
         if not self.tasks_data:
-            tk.Label(self.tasks_list_frame, text="No tasks yet. Add one below.", fg="#666", bg="#0a1a0a", font=self.font_body).pack(pady=20)
+            tk.Label(self.tasks_list_frame, text="No tasks yet. Add one below.", fg=TEXT_DIM, bg=BASE_BG, font=self.font_body).pack(pady=20)
             return
         for i, t in enumerate(self.tasks_data):
-            row = tk.Frame(self.tasks_list_frame, bg="#0a1a0a")
+            row = tk.Frame(self.tasks_list_frame, bg=CARD_BG)
             row.pack(fill="x", pady=3)
             done = t.get('done', False)
-            tk.Button(row, text="✔" if done else "○", font=font.Font(size=14, weight="bold"), fg="#1db954" if done else "#666",
-                      bg="#0a1a0a", bd=0, width=3, command=lambda idx=i: self._toggle_task(idx)).pack(side="left")
-            tk.Label(row, text=t.get('text', ''), fg="#666" if done else "#fff", bg="#0a1a0a", font=self.font_body, anchor="w").pack(side="left", fill="x", expand=True, padx=10)
-            tk.Button(row, text="✕", font=self.font_body, fg="#ff4444", bg="#0a1a0a", bd=0, command=lambda idx=i: self._delete_task(idx)).pack(side="right")
+            tk.Button(row, text="✔" if done else "○", font=font.Font(size=14, weight="bold"), fg=ACCENT_GREEN if done else TEXT_DIM,
+                      bg=CARD_BG, bd=0, width=3, command=lambda idx=i: self._toggle_task(idx)).pack(side="left")
+            tk.Label(row, text=t.get('text', ''), fg=TEXT_DIM if done else TEXT_PRIMARY, bg=CARD_BG, font=self.font_body, anchor="w").pack(side="left", fill="x", expand=True, padx=10)
+            tk.Button(row, text="✕", font=self.font_body, fg=ACCENT_RED, bg=CARD_BG, bd=0, command=lambda idx=i: self._delete_task(idx)).pack(side="right")
 
     def _toggle_task(self, idx):
         self.tasks_data[idx]['done'] = not self.tasks_data[idx].get('done', False)
@@ -1692,12 +1741,12 @@ class MatterDeskCore:
         top = tk.Toplevel(self.root)
         top.overrideredirect(True)
         top.geometry("800x480+0+0")
-        top.configure(bg="#050505")
+        top.configure(bg=BASE_BG)
         top.attributes('-topmost', True)
-        tk.Label(top, text="New Task", font=font.Font(size=18, weight="bold"), fg="#1db954", bg="#050505").pack(pady=10)
-        entry = tk.Text(top, height=3, bg="#111111", fg="#fff", font=self.font_sub)
+        tk.Label(top, text="N E W   T A S K", font=font.Font(size=16, weight="bold"), fg=ACCENT_VIOLET, bg=BASE_BG).pack(pady=10)
+        entry = tk.Text(top, height=3, bg=CARD_BG, fg=TEXT_PRIMARY, font=self.font_sub, bd=0, highlightthickness=1, highlightbackground=LINE)
         entry.pack(fill="x", padx=20, pady=10)
-        kbd = tk.Frame(top, bg="#050505")
+        kbd = tk.Frame(top, bg=BASE_BG)
         kbd.pack(fill="both", expand=True, padx=20, pady=5)
         self._build_generic_osk(kbd, entry)
 
@@ -1709,28 +1758,25 @@ class MatterDeskCore:
                 self._render_tasks()
             top.destroy()
 
-        btn_row = tk.Frame(top, bg="#050505")
+        btn_row = tk.Frame(top, bg=BASE_BG)
         btn_row.pack(fill="x", padx=20, pady=10)
-        tk.Button(btn_row, text="SAVE", font=self.font_sub, bg="#0a2a10", fg="#1db954", bd=0, command=save).pack(side="left", ipadx=20, ipady=10)
-        tk.Button(btn_row, text="CANCEL", font=self.font_sub, bg="#2a0000", fg="#ff4444", bd=0, command=top.destroy).pack(side="right", ipadx=20, ipady=10)
+        tk.Button(btn_row, text="SAVE", font=self.font_sub, bg=CARD_BG, fg=ACCENT_GREEN, bd=0, command=save).pack(side="left", ipadx=20, ipady=10)
+        tk.Button(btn_row, text="CANCEL", font=self.font_sub, bg=CARD_BG, fg=ACCENT_RED, bd=0, command=top.destroy).pack(side="right", ipadx=20, ipady=10)
 
     # ==========================================
     # EXAM COUNTDOWN APP (new)
     # ==========================================
     def _build_countdown_ui(self):
-        f = tk.Frame(self.root, bg="#050505")
+        f = tk.Frame(self.root, bg=BASE_BG)
         f.place(x=0, y=0, relwidth=1, relheight=1)
         self.frames["countdown"] = f
-        top = tk.Frame(f, bg="#050505", height=40)
-        top.pack(fill="x", padx=10, pady=5)
-        tk.Button(top, text="< BACK", font=self.font_body, bg="#050505", fg="#fff", bd=0, command=lambda: self.nav_to("main")).pack(side="left")
-        tk.Label(top, text="EXAM COUNTDOWN", font=self.font_sub, fg="#ff8888", bg="#050505").pack(side="right", padx=20)
-        self.countdown_days_lbl = tk.Label(f, text="--", font=font.Font(size=90, weight="bold"), fg="#ff8888", bg="#050505")
+        self._build_screen_header(f, "MOD.10", "Exam Countdown", lambda: self.nav_to("main"), accent=ACCENT_VIOLET)
+        self.countdown_days_lbl = tk.Label(f, text="--", font=font.Font(size=90, weight="bold"), fg=ACCENT_VIOLET, bg=BASE_BG)
         self.countdown_days_lbl.pack(pady=(50, 0))
-        tk.Label(f, text="DAYS REMAINING", font=self.font_sub, fg="#888", bg="#050505").pack()
-        self.countdown_date_lbl = tk.Label(f, text="", font=self.font_body, fg="#666", bg="#050505")
+        tk.Label(f, text="DAYS REMAINING", font=self.font_sub, fg=TEXT_MUTED, bg=BASE_BG).pack()
+        self.countdown_date_lbl = tk.Label(f, text="", font=self.font_body, fg=TEXT_DIM, bg=BASE_BG)
         self.countdown_date_lbl.pack(pady=10)
-        tk.Button(f, text="SET TARGET DATE", font=self.font_body, bg="#1a1a1a", fg="#ff8888", bd=0, command=self._set_countdown_date).pack(ipadx=20, ipady=10)
+        tk.Button(f, text="SET TARGET DATE", font=self.font_body, bg=CARD_BG, fg=ACCENT_VIOLET, bd=0, command=self._set_countdown_date).pack(ipadx=20, ipady=10)
         self.countdown_config = self._load_json(COUNTDOWN_FILE, {"date": "2027-04-01"})
         self._refresh_countdown()
 
@@ -1762,34 +1808,28 @@ class MatterDeskCore:
     # SYSTEM LOGS & DIAGNOSTICS
     # ==========================================
     def _build_logs_ui(self):
-        f = tk.Frame(self.root, bg="#121212")
+        f = tk.Frame(self.root, bg=BASE_BG)
         f.place(x=0, y=0, relwidth=1, relheight=1)
         self.frames["logs"] = f
-        top = tk.Frame(f, bg="#121212", height=40)
-        top.pack(fill="x", padx=10, pady=10)
-        tk.Button(top, text="< BACK", font=self.font_body, bg="#121212", fg="#fff", bd=0, command=lambda: self.nav_to("settings")).pack(side="left")
-        tk.Label(top, text="SYSTEM EVENTS", font=self.font_sub, fg="#888", bg="#121212").pack(side="right", padx=20)
-        self.txt_logs = tk.Text(f, bg="#050505", fg="#1db954", font=("Courier", 10), bd=0, highlightthickness=0)
+        self._build_screen_header(f, "SYS.01", "System Events", lambda: self.nav_to("settings"), accent=TEXT_MUTED)
+        self.txt_logs = tk.Text(f, bg=BASE_BG, fg=ACCENT_GREEN, font=("Courier", 10), bd=0, highlightthickness=0)
         self.txt_logs.pack(fill="both", expand=True, padx=20, pady=10)
         self.txt_logs.insert(tk.END, "Logs initialized...\n")
         self.txt_logs.config(state="disabled")
 
     def _build_diagnostics_ui(self):
-        f = tk.Frame(self.root, bg="#121212")
+        f = tk.Frame(self.root, bg=BASE_BG)
         f.place(x=0, y=0, relwidth=1, relheight=1)
         self.frames["diagnostics"] = f
-        top = tk.Frame(f, bg="#121212", height=40)
-        top.pack(fill="x", padx=10, pady=10)
-        tk.Button(top, text="< BACK", font=self.font_body, bg="#121212", fg="#fff", bd=0, command=lambda: self.nav_to("settings")).pack(side="left")
-        tk.Label(top, text="HARDWARE TESTS", font=self.font_sub, fg="#888", bg="#121212").pack(side="right", padx=20)
-        btn_frame = tk.Frame(f, bg="#121212")
+        self._build_screen_header(f, "SYS.02", "Hardware Tests", lambda: self.nav_to("settings"), accent=TEXT_MUTED)
+        btn_frame = tk.Frame(f, bg=BASE_BG)
         btn_frame.pack(expand=True)
-        tk.Button(btn_frame, text="Touch Calibration", font=self.font_sub, bg="#1a1a1a", fg="#fff", bd=0, command=self._test_touch, width=20).grid(row=0, column=0, padx=10, pady=10, ipady=15)
-        tk.Button(btn_frame, text="Display Integrity", font=self.font_sub, bg="#1a1a1a", fg="#fff", bd=0, command=self._test_display, width=20).grid(row=0, column=1, padx=10, pady=10, ipady=15)
-        tk.Button(btn_frame, text="Network Ping", font=self.font_sub, bg="#1a1a1a", fg="#fff", bd=0, command=self._test_network, width=20).grid(row=1, column=0, padx=10, pady=10, ipady=15)
-        tk.Button(btn_frame, text="Firebase Health", font=self.font_sub, bg="#1a1a1a", fg="#fff", bd=0, command=self._test_firebase, width=20).grid(row=1, column=1, padx=10, pady=10, ipady=15)
-        tk.Button(btn_frame, text="GitHub Access", font=self.font_sub, bg="#1a2a4a", fg="#88aaff", bd=0, command=self._test_github, width=20).grid(row=2, column=0, padx=10, pady=10, ipady=15)
-        tk.Button(btn_frame, text="Thermal Sensors", font=self.font_sub, bg="#3a1a1a", fg="#ff8888", bd=0, command=self._test_thermal, width=20).grid(row=2, column=1, padx=10, pady=10, ipady=15)
+        tk.Button(btn_frame, text="Touch Calibration", font=self.font_sub, bg=CARD_BG, fg=TEXT_PRIMARY, bd=0, command=self._test_touch, width=20).grid(row=0, column=0, padx=10, pady=10, ipady=15)
+        tk.Button(btn_frame, text="Display Integrity", font=self.font_sub, bg=CARD_BG, fg=TEXT_PRIMARY, bd=0, command=self._test_display, width=20).grid(row=0, column=1, padx=10, pady=10, ipady=15)
+        tk.Button(btn_frame, text="Network Ping", font=self.font_sub, bg=CARD_BG, fg=TEXT_PRIMARY, bd=0, command=self._test_network, width=20).grid(row=1, column=0, padx=10, pady=10, ipady=15)
+        tk.Button(btn_frame, text="Firebase Health", font=self.font_sub, bg=CARD_BG, fg=TEXT_PRIMARY, bd=0, command=self._test_firebase, width=20).grid(row=1, column=1, padx=10, pady=10, ipady=15)
+        tk.Button(btn_frame, text="GitHub Access", font=self.font_sub, bg=CARD_BG, fg=ACCENT_CYAN, bd=0, command=self._test_github, width=20).grid(row=2, column=0, padx=10, pady=10, ipady=15)
+        tk.Button(btn_frame, text="Thermal Sensors", font=self.font_sub, bg=CARD_BG, fg=ACCENT_AMBER, bd=0, command=self._test_thermal, width=20).grid(row=2, column=1, padx=10, pady=10, ipady=15)
 
     def _test_touch(self):
         self.nav_to("waiting")
@@ -1875,35 +1915,35 @@ class MatterDeskCore:
     # SETTINGS & OSK W/PERSISTENT CAPS LOCK
     # ==========================================
     def _build_settings_ui(self):
-        f = tk.Frame(self.root, bg="#121212")
+        f = tk.Frame(self.root, bg=BASE_BG)
         f.place(x=0, y=0, relwidth=1, relheight=1)
         self.frames["settings"] = f
         
-        top = tk.Frame(f, bg="#121212", height=40)
-        top.pack(fill="x", padx=10, pady=10)
-        tk.Button(top, text="< BACK", font=self.font_body, bg="#121212", fg="#fff", bd=0, command=lambda: self.nav_to("main")).pack(side="left")
+        self._build_screen_header(f, "SYS.00", "System Settings", lambda: self.nav_to("main"), accent=TEXT_MUTED)
         
-        wifi_frame = tk.Frame(f, bg="#121212")
-        wifi_frame.pack(side="left", fill="both", expand=True, padx=20)
-        tk.Label(wifi_frame, text="NETWORK", font=self.font_sub, fg="#1db954", bg="#121212").pack(anchor="w")
-        self.btn_wifi_sel = tk.Button(wifi_frame, text="Select Wi-Fi Network", font=self.font_sub, bg="#1a1a1a", fg="#fff", bd=0, command=self._trigger_wifi_modal)
+        body = tk.Frame(f, bg=BASE_BG)
+        body.pack(fill="both", expand=True)
+        wifi_frame = tk.Frame(body, bg=BASE_BG)
+        wifi_frame.pack(side="left", fill="both", expand=True, padx=20, pady=10)
+        tk.Label(wifi_frame, text="N E T W O R K", font=font.Font(family="Courier", size=10, weight="bold"), fg=ACCENT_CYAN, bg=BASE_BG).pack(anchor="w")
+        self.btn_wifi_sel = tk.Button(wifi_frame, text="Select Wi-Fi Network", font=self.font_sub, bg=CARD_BG, fg=TEXT_PRIMARY, bd=0, command=self._trigger_wifi_modal)
         self.btn_wifi_sel.pack(fill="x", pady=10, ipady=15)
-        self.entry_pass = tk.Entry(wifi_frame, font=self.font_header, bg="#0a0a0a", fg="#fff", bd=0, highlightthickness=1, highlightbackground="#333", show="*")
+        self.entry_pass = tk.Entry(wifi_frame, font=self.font_header, bg=CARD_BG_ALT, fg=TEXT_PRIMARY, bd=0, highlightthickness=1, highlightbackground=LINE, show="*")
         self.entry_pass.pack(fill="x", pady=10, ipady=5)
-        self.btn_connect = tk.Button(wifi_frame, text="CONNECT", font=self.font_sub, bg="#222", fg="#fff", bd=0, command=self._connect_wifi)
+        self.btn_connect = tk.Button(wifi_frame, text="CONNECT", font=self.font_sub, bg=CARD_BG, fg=TEXT_PRIMARY, bd=0, command=self._connect_wifi)
         self.btn_connect.pack(fill="x", ipady=15)
 
-        right_frame = tk.Frame(f, bg="#121212")
-        right_frame.pack(side="right", fill="both", expand=True, padx=20)
-        self.btn_ota = tk.Button(right_frame, text="UPDATE SYSTEM (GITHUB OTA)", font=self.font_sub, bg="#1a2a4a", fg="#88aaff", bd=0, command=self._exec_ota)
+        right_frame = tk.Frame(body, bg=BASE_BG)
+        right_frame.pack(side="right", fill="both", expand=True, padx=20, pady=10)
+        self.btn_ota = tk.Button(right_frame, text="UPDATE SYSTEM (GITHUB OTA)", font=self.font_sub, bg=CARD_BG, fg=ACCENT_CYAN, bd=0, command=self._exec_ota)
         self.btn_ota.pack(fill="x", pady=(0, 10), ipady=10)
         
-        row2 = tk.Frame(right_frame, bg="#121212")
+        row2 = tk.Frame(right_frame, bg=BASE_BG)
         row2.pack(fill="x", pady=(0, 10))
-        tk.Button(row2, text="DIAGNOSTICS", font=self.font_sub, bg="#333", fg="#fff", bd=0, command=lambda: self.nav_to("diagnostics")).pack(side="left", fill="x", expand=True, padx=(0,5), ipady=10)
-        tk.Button(row2, text="SYSTEM LOGS", font=self.font_sub, bg="#333", fg="#fff", bd=0, command=lambda: self.nav_to("logs")).pack(side="right", fill="x", expand=True, padx=(5,0), ipady=10)
+        tk.Button(row2, text="DIAGNOSTICS", font=self.font_sub, bg=CARD_BG, fg=TEXT_PRIMARY, bd=0, command=lambda: self.nav_to("diagnostics")).pack(side="left", fill="x", expand=True, padx=(0,5), ipady=10)
+        tk.Button(row2, text="SYSTEM LOGS", font=self.font_sub, bg=CARD_BG, fg=TEXT_PRIMARY, bd=0, command=lambda: self.nav_to("logs")).pack(side="right", fill="x", expand=True, padx=(5,0), ipady=10)
         
-        self.kbd_container = tk.Frame(right_frame, bg="#121212")
+        self.kbd_container = tk.Frame(right_frame, bg=BASE_BG)
         self.kbd_container.pack(fill="both", expand=True)
         self._build_osk()
 
@@ -1932,20 +1972,20 @@ class MatterDeskCore:
                 self.kbd_container.columnconfigure(c, weight=1)
                 
                 if key == "CAPS":
-                    bg = "#1a2a4a" if self.caps_lock_active else "#1a1a1a"
-                    fg = "#00aaff" if self.caps_lock_active else "#ffffff"
+                    bg = CARD_BG_ALT if self.caps_lock_active else CARD_BG
+                    fg = ACCENT_CYAN if self.caps_lock_active else TEXT_PRIMARY
                     display_text = "CAPS"
                 elif key == "DEL":
-                    bg = "#330000"
-                    fg = "#ff4444"
+                    bg = CARD_BG
+                    fg = ACCENT_RED
                     display_text = "DEL"
                 else:
-                    bg = "#1a1a1a"
-                    fg = "#ffffff"
+                    bg = CARD_BG
+                    fg = TEXT_PRIMARY
                     display_text = key.upper() if self.caps_lock_active else key
                     
                 btn = tk.Button(self.kbd_container, text=display_text, font=self.font_sub, bg=bg, fg=fg, bd=0, 
-                                activebackground="#444", command=lambda k=key: self._osk_press(k))
+                                activebackground=CARD_BG_ALT, command=lambda k=key: self._osk_press(k))
                 btn.grid(row=r, column=c, sticky="nsew", padx=2, pady=2)
 
     def _osk_press(self, key):
@@ -1965,7 +2005,7 @@ class MatterDeskCore:
         ssid = self.btn_wifi_sel.cget("text")
         pw = self.entry_pass.get()
         if ssid == "Select Wi-Fi Network" or not ssid: return
-        self.btn_connect.config(text="Linking...", fg="#ffaa00")
+        self.btn_connect.config(text="Linking...", fg=ACCENT_AMBER)
         self.log(f"Attempting Wi-Fi connection to: {ssid}")
         threading.Thread(target=self._exec_connect, args=(ssid, pw), daemon=True).start()
 
@@ -1975,10 +2015,10 @@ class MatterDeskCore:
             if pw: cmd.extend(['password', pw])
             subprocess.check_call(cmd)
             self.log(f"Wi-Fi Connected successfully to {ssid}")
-            self.root.after(0, lambda: self.btn_connect.config(text="CONNECTED", fg="#1db954"))
+            self.root.after(0, lambda: self.btn_connect.config(text="CONNECTED", fg=ACCENT_GREEN))
         except Exception as e:
             self.log(f"Wi-Fi Connection Failed: {e}")
-            self.root.after(0, lambda: self.btn_connect.config(text="FAILED", fg="#ff4444"))
+            self.root.after(0, lambda: self.btn_connect.config(text="FAILED", fg=ACCENT_RED))
 
     def _exec_ota(self):
         self.log("Triggering Apple-Style OTA GUI.")
@@ -2025,40 +2065,38 @@ class MatterDeskCore:
         self.playlist_dict = {}
 
     def _build_spotify_ui(self):
-        f = tk.Frame(self.root, bg="#121212")
+        f = tk.Frame(self.root, bg=BASE_BG)
         f.place(x=0, y=0, relwidth=1, relheight=1)
         self.frames["spotify"] = f
         if not self.sp:
-            tk.Label(f, text="Auth Missing: run auth.py", font=self.font_header, fg="#ff4444", bg="#121212").pack(pady=(150, 10))
-            tk.Button(f, text="< BACK", font=self.font_sub, bg="#222", fg="#fff", bd=0, command=lambda: self.nav_to("main")).pack(pady=40, ipadx=20, ipady=10)
+            tk.Label(f, text="Auth Missing: run auth.py", font=self.font_header, fg=ACCENT_RED, bg=BASE_BG).pack(pady=(150, 10))
+            tk.Button(f, text="‹ BACK", font=self.font_sub, bg=CARD_BG, fg=TEXT_PRIMARY, bd=0, command=lambda: self.nav_to("main")).pack(pady=40, ipadx=20, ipady=10)
             return
-        top = tk.Frame(f, bg="#121212", height=40)
-        top.pack(fill="x", padx=10, pady=5)
-        tk.Button(top, text="< BACK", font=self.font_body, bg="#121212", fg="#fff", bd=0, command=lambda: self.nav_to("main")).pack(side="left")
-        self.vinyl_canvas = tk.Canvas(f, width=350, height=350, bg="#121212", highlightthickness=0)
+        self._build_screen_header(f, "MOD.02", "Spotify", lambda: self.nav_to("main"), accent=ACCENT_GREEN)
+        self.vinyl_canvas = tk.Canvas(f, width=350, height=350, bg=BASE_BG, highlightthickness=0)
         self.vinyl_canvas.pack(side="left", padx=30)
         self._draw_vinyl()
-        ctrl = tk.Frame(f, bg="#121212")
+        ctrl = tk.Frame(f, bg=BASE_BG)
         ctrl.pack(side="left", fill="both", expand=True, padx=20)
-        self.lbl_track = tk.Label(ctrl, text="Loading...", font=self.font_header, fg="#fff", bg="#121212", anchor="w")
+        self.lbl_track = tk.Label(ctrl, text="Loading...", font=self.font_header, fg=TEXT_PRIMARY, bg=BASE_BG, anchor="w")
         self.lbl_track.pack(fill="x", pady=(20,0))
-        self.lbl_artist = tk.Label(ctrl, text="", font=self.font_sub, fg="#1db954", bg="#121212", anchor="w")
+        self.lbl_artist = tk.Label(ctrl, text="", font=self.font_sub, fg=ACCENT_GREEN, bg=BASE_BG, anchor="w")
         self.lbl_artist.pack(fill="x")
-        btn = tk.Frame(ctrl, bg="#121212")
+        btn = tk.Frame(ctrl, bg=BASE_BG)
         btn.pack(pady=20)
-        c_style = {"font": font.Font(family="Helvetica", size=20, weight="bold"), "bg": "#121212", "fg": "#fff", "bd": 0, "activebackground": "#222"}
+        c_style = {"font": font.Font(family="Helvetica", size=20, weight="bold"), "bg": BASE_BG, "fg": TEXT_PRIMARY, "bd": 0, "activebackground": CARD_BG}
         tk.Button(btn, text="⏮", command=lambda: self.sp.previous_track() if self.sp else None, **c_style).pack(side="left", padx=15)
-        self.btn_play = tk.Button(btn, text="▶", font=font.Font(size=24), bg="#1db954", fg="#fff", bd=0, command=self._sp_play_pause, width=3)
+        self.btn_play = tk.Button(btn, text="▶", font=font.Font(size=24), bg=ACCENT_GREEN, fg="#0a0a12", bd=0, command=self._sp_play_pause, width=3)
         self.btn_play.pack(side="left", padx=15)
         tk.Button(btn, text="⏭", command=lambda: self.sp.next_track() if self.sp else None, **c_style).pack(side="left", padx=15)
-        self.vol_canvas = tk.Canvas(ctrl, width=200, height=20, bg="#121212", highlightthickness=0)
+        self.vol_canvas = tk.Canvas(ctrl, width=200, height=20, bg=BASE_BG, highlightthickness=0)
         self.vol_canvas.pack(pady=(10, 20))
         self.vol_canvas.bind("<B1-Motion>", self._on_vol_drag)
         self.vol_canvas.bind("<Button-1>", self._on_vol_drag)
-        b_frame = tk.Frame(ctrl, bg="#121212")
+        b_frame = tk.Frame(ctrl, bg=BASE_BG)
         b_frame.pack(fill="x", side="bottom", pady=20)
-        tk.Button(b_frame, text="Select Output", bg="#222", fg="#fff", bd=0, font=self.font_body, command=self._trigger_device_modal).pack(side="left", ipady=10, ipadx=10)
-        tk.Button(b_frame, text="Select Playlist", bg="#222", fg="#fff", bd=0, font=self.font_body, command=self._trigger_playlist_modal).pack(side="right", ipady=10, ipadx=10)
+        tk.Button(b_frame, text="Select Output", bg=CARD_BG, fg=TEXT_PRIMARY, bd=0, font=self.font_body, command=self._trigger_device_modal).pack(side="left", ipady=10, ipadx=10)
+        tk.Button(b_frame, text="Select Playlist", bg=CARD_BG, fg=TEXT_PRIMARY, bd=0, font=self.font_body, command=self._trigger_playlist_modal).pack(side="right", ipady=10, ipadx=10)
         threading.Thread(target=self._poll_spotify_state, daemon=True).start()
 
     def _trigger_device_modal(self):
@@ -2115,10 +2153,10 @@ class MatterDeskCore:
         self.lbl_artist.config(text=a)
         self.btn_play.config(text="⏸" if p else "▶")
         self.vol_canvas.delete("all")
-        self.vol_canvas.create_line(0, 10, 200, 10, fill="#404040", width=4, capstyle=tk.ROUND)
+        self.vol_canvas.create_line(0, 10, 200, 10, fill=LINE, width=4, capstyle=tk.ROUND)
         fill_w = max(4, (v/100) * 200) if v else 4
-        self.vol_canvas.create_line(0, 10, fill_w, 10, fill="#1db954", width=4, capstyle=tk.ROUND)
-        self.vol_canvas.create_oval(fill_w-6, 4, fill_w+6, 16, fill="#fff", outline="")
+        self.vol_canvas.create_line(0, 10, fill_w, 10, fill=ACCENT_GREEN, width=4, capstyle=tk.ROUND)
+        self.vol_canvas.create_oval(fill_w-6, 4, fill_w+6, 16, fill=TEXT_PRIMARY, outline="")
 
     def _on_vol_drag(self, e):
         if not getattr(self, 'sp', None): return
