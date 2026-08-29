@@ -19,6 +19,7 @@ import socket
 import math
 import random
 from modules.brain import BrainEngine
+from modules.motion import MotionEngine
 
 # --- System Paths ---
 BACKLIGHT_POWER = '/sys/class/backlight/10-0045/bl_power'
@@ -256,6 +257,7 @@ class MatterDeskCore:
         self._init_spotify()
         self._init_firebase()
         self.brain = BrainEngine(self)
+        self.motion = MotionEngine(self)
 
         # ==========================================
         # 3. INTERFACE BUILD MATRIX
@@ -279,7 +281,8 @@ class MatterDeskCore:
         self._build_system_ui()
         self._build_telemetry_bar()
         self._build_thermal_panic_ui()
-        
+        self._wire_press_feedback()
+
         # ==========================================
         # 4. RUNTIME THREAD ORCHESTRATION
         # ==========================================
@@ -356,6 +359,16 @@ class MatterDeskCore:
             self.tap_times.clear()
             if not self.is_asleep:
                 self.sleep_display()
+
+    def _wire_press_feedback(self, widget=None):
+        """Walk the already-built widget tree once and attach a touch
+        press/release color pulse (modules/motion.py) to every tk.Button,
+        without touching how each screen constructs its own buttons."""
+        widget = widget or self.root
+        for child in widget.winfo_children():
+            if isinstance(child, tk.Button):
+                self.motion.bind_press_feedback(child)
+            self._wire_press_feedback(child)
 
     # ==========================================
     # GENERIC HELPERS: JSON storage + reusable on-screen keyboard
