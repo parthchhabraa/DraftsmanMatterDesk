@@ -125,13 +125,18 @@ class MotionEngine:
                 return
             button._motion_base_bg = base_bg
             flash = _LINE if base_bg == _CARD_BG_ALT else _CARD_BG_ALT
-            self.animate_widget_color(button, duration_ms=press_ms, key=f"press_{id(button)}", bg=flash)
+            # No explicit key: falls back to animate_widget_color's own
+            # per-widget default ("color_<id>"), the same one any other
+            # caller (e.g. a toggle's state-color change) would use too —
+            # so whichever tween starts last cleanly cancels the other
+            # instead of both fighting over the same bg option.
+            self.animate_widget_color(button, duration_ms=press_ms, bg=flash)
 
         def on_release(_event):
             base_bg = getattr(button, "_motion_base_bg", None)
             if base_bg is None:
                 return
-            self.animate_widget_color(button, duration_ms=release_ms, key=f"press_{id(button)}", bg=base_bg)
+            self.animate_widget_color(button, duration_ms=release_ms, bg=base_bg)
 
         button.bind("<ButtonPress-1>", on_press, add="+")
         button.bind("<ButtonRelease-1>", on_release, add="+")
