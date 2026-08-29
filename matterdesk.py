@@ -18,6 +18,7 @@ import datetime
 import socket
 import math
 import random
+from modules.brain import BrainEngine
 
 # --- System Paths ---
 BACKLIGHT_POWER = '/sys/class/backlight/10-0045/bl_power'
@@ -254,7 +255,8 @@ class MatterDeskCore:
         # ==========================================
         self._init_spotify()
         self._init_firebase()
-        
+        self.brain = BrainEngine(self)
+
         # ==========================================
         # 3. INTERFACE BUILD MATRIX
         # ==========================================
@@ -294,6 +296,7 @@ class MatterDeskCore:
         threading.Thread(target=self._network_autoscan_loop, daemon=True).start()
         if getattr(self, 'firebase_active', False):
             threading.Thread(target=self._battery_telemetry_loop, daemon=True).start()
+        self.brain.start_loop()
             
         self.last_h = self.last_m = self.last_s = ""
         self._clock_tick()
@@ -733,7 +736,14 @@ class MatterDeskCore:
             self._create_round_rect(self.home_canvas, x1, y1, x2, y2, radius=12, fill=CARD_BG, outline=accent, width=1)
             self.home_canvas.create_text((x1+x2)//2, (y1+y2)//2, text=name, font=font.Font(family="Helvetica", size=10, weight="bold"), fill=accent, justify="center")
             self.app_hitboxes.append((x1, y1, x2, y2, cmd))
-            
+
+        # --- Brain companion status strip (draftsmanbrain via brain-api) ---
+        self._create_round_rect(self.home_canvas, 20, 446, 780, 474, radius=12, fill=CARD_BG)
+        self.home_canvas.create_text(38, 460, text="BRAIN:", font=font.Font(family="Helvetica", size=10, weight="bold"), fill=TEXT_MUTED, anchor="w")
+        self.brain_status_id = self.home_canvas.create_text(95, 460, text="UNREACHABLE", font=font.Font(family="Helvetica", size=10, weight="bold"), fill=ACCENT_RED, anchor="w")
+        self.btn_wake_desktop = tk.Button(self.home_canvas, text="WAKE DESKTOP", font=font.Font(family="Helvetica", size=9, weight="bold"), bg=CARD_BG_ALT, fg=ACCENT_CYAN, bd=0, activebackground=CARD_BG_ALT, activeforeground=ACCENT_CYAN, command=lambda: self.brain.wake_target("desktop"))
+        self.btn_wake_desktop.place(x=650, y=450, width=118, height=22)
+
         self.home_canvas.bind("<Button-1>", self._handle_home_click)
 
     def _handle_home_click(self, event):

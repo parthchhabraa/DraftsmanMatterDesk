@@ -1,0 +1,8 @@
+# secrets / local runtime data — never commit
+data/brain_config.json
+serviceAccountKey.json
+telemetry_data.json
+.cache
+__pycache__/
+modules/__pycache__/
+*.pyc
