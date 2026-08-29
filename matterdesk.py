@@ -1012,12 +1012,16 @@ class MatterDeskCore:
         if self.dpn_active:
             self.log("DPN Decoupling Sequence Initiated.")
             self.dpn_active = False
-            self.lbl_dpn_status.config(text="NETWORK STATE: STOPPING...", fg=ACCENT_AMBER)
-            self.btn_dpn_toggle.config(text="ACTIVATE DPN CORE", bg=CARD_BG, fg=ACCENT_CYAN)
+            self.lbl_dpn_status.config(text="NETWORK STATE: STOPPING...")
+            self.motion.animate_widget_color(self.lbl_dpn_status, duration_ms=200, fg=ACCENT_AMBER)
+            self.btn_dpn_toggle.config(text="ACTIVATE DPN CORE")
+            self.motion.animate_widget_color(self.btn_dpn_toggle, duration_ms=200, bg=CARD_BG, fg=ACCENT_CYAN)
             threading.Thread(target=self._dpn_stop_worker, daemon=True).start()
         else:
-            self.lbl_dpn_status.config(text="NETWORK STATE: STARTING...", fg=ACCENT_AMBER)
-            self.btn_dpn_toggle.config(text="STARTING...", bg=CARD_BG_ALT, fg=TEXT_MUTED)
+            self.lbl_dpn_status.config(text="NETWORK STATE: STARTING...")
+            self.motion.animate_widget_color(self.lbl_dpn_status, duration_ms=200, fg=ACCENT_AMBER)
+            self.btn_dpn_toggle.config(text="STARTING...")
+            self.motion.animate_widget_color(self.btn_dpn_toggle, duration_ms=200, bg=CARD_BG_ALT, fg=TEXT_MUTED)
             threading.Thread(target=self._dpn_start_worker, daemon=True).start()
 
     def _write_dpn_configs(self):
@@ -1080,18 +1084,24 @@ class MatterDeskCore:
                 os.system(f"sudo wg-quick up {WG_IFACE} > /dev/null 2>&1")
             self._apply_dpn_nat(True)
             self.dpn_active = True
-            self.root.after(0, lambda: (
-                self.lbl_dpn_status.config(text="NETWORK STATE: ROUTED", fg="#1db954"),
-                self.btn_dpn_toggle.config(text="DEACTIVATE DPN CORE", bg="#3a1a1a", fg="#ff4444"),
+
+            def _on_dpn_started():
+                self.lbl_dpn_status.config(text="NETWORK STATE: ROUTED")
+                self.motion.animate_widget_color(self.lbl_dpn_status, duration_ms=200, fg="#1db954")
+                self.btn_dpn_toggle.config(text="DEACTIVATE DPN CORE")
+                self.motion.animate_widget_color(self.btn_dpn_toggle, duration_ms=200, bg="#3a1a1a", fg="#ff4444")
                 self._render_dpn_canvas()
-            ))
+            self.root.after(0, _on_dpn_started)
             self.log("DPN Hardware Tunnel Matrix Ignited.")
         except Exception as e:
             self.log(f"DPN start failed: {e}")
-            self.root.after(0, lambda: (
-                self.lbl_dpn_status.config(text="NETWORK STATE: ERROR", fg="#ff4444"),
-                self.btn_dpn_toggle.config(text="ACTIVATE DPN CORE", bg="#1a2a4a", fg="#00aaff")
-            ))
+
+            def _on_dpn_start_error():
+                self.lbl_dpn_status.config(text="NETWORK STATE: ERROR")
+                self.motion.animate_widget_color(self.lbl_dpn_status, duration_ms=200, fg="#ff4444")
+                self.btn_dpn_toggle.config(text="ACTIVATE DPN CORE")
+                self.motion.animate_widget_color(self.btn_dpn_toggle, duration_ms=200, bg="#1a2a4a", fg="#00aaff")
+            self.root.after(0, _on_dpn_start_error)
 
     def _dpn_stop_worker(self):
         try:
@@ -1101,10 +1111,12 @@ class MatterDeskCore:
                 os.system(f"sudo wg-quick down {WG_IFACE} > /dev/null 2>&1")
             self.dpn_client_count = 0
             self.dpn_clients = []
-            self.root.after(0, lambda: (
-                self.lbl_dpn_status.config(text="NETWORK STATE: OFFLINE", fg="#ff4444"),
+
+            def _on_dpn_stopped():
+                self.lbl_dpn_status.config(text="NETWORK STATE: OFFLINE")
+                self.motion.animate_widget_color(self.lbl_dpn_status, duration_ms=200, fg="#ff4444")
                 self._render_dpn_canvas()
-            ))
+            self.root.after(0, _on_dpn_stopped)
             self.log("DPN core fully offline.")
         except Exception as e:
             self.log(f"DPN stop failed: {e}")
