@@ -773,9 +773,9 @@ class MatterDeskCore:
             x2 = x1 + tile_w
             y2 = y1 + tile_h
             
-            self._create_round_rect(self.home_canvas, x1, y1, x2, y2, radius=12, fill=CARD_BG, outline=accent, width=1)
-            self.home_canvas.create_text((x1+x2)//2, (y1+y2)//2, text=name, font=font.Font(family="Helvetica", size=10, weight="bold"), fill=accent, justify="center")
-            self.app_hitboxes.append((x1, y1, x2, y2, cmd))
+            tile_poly = self._create_round_rect(self.home_canvas, x1, y1, x2, y2, radius=12, fill=CARD_BG, outline=accent, width=1)
+            tile_text = self.home_canvas.create_text((x1+x2)//2, (y1+y2)//2, text=name, font=font.Font(family="Helvetica", size=10, weight="bold"), fill=accent, justify="center")
+            self.app_hitboxes.append((x1, y1, x2, y2, cmd, (tile_poly, tile_text)))
 
         # --- Brain companion status strip (draftsmanbrain via brain-api) ---
         self._create_round_rect(self.home_canvas, 20, 446, 780, 474, radius=12, fill=CARD_BG)
@@ -788,8 +788,10 @@ class MatterDeskCore:
 
     def _handle_home_click(self, event):
         self.last_interaction = time.time()
-        for x1, y1, x2, y2, cmd in self.app_hitboxes:
+        for x1, y1, x2, y2, cmd, item_ids in self.app_hitboxes:
             if x1 <= event.x <= x2 and y1 <= event.y <= y2:
+                cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+                self.motion.pulse_canvas_items(self.home_canvas, item_ids, cx, cy)
                 cmd()
                 break
 
