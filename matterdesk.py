@@ -318,23 +318,34 @@ class MatterDeskCore:
             self.txt_logs.insert(tk.END, "\n".join(self.system_logs))
             self.txt_logs.config(state="disabled")
 
-    def nav_to(self, frame_name):
-        self.frames[frame_name].tkraise()
+    def nav_to(self, frame_name, animate=True):
+        prev_name = self.current_frame
+        prev = self.frames.get(prev_name)
+        same_frame = (frame_name == prev_name)
         self.current_frame = frame_name
-        
+
         if frame_name in ["boot", "ota", "standby", "study_absolute"]:
             self.frames["telemetry_bar"].place_forget()
         else:
             self.frames["telemetry_bar"].place(x=0, y=460, width=800, height=20)
             self.frames["telemetry_bar"].tkraise()
-            
+
         self.vinyl_active = (frame_name == "spotify")
-        if self.vinyl_active and getattr(self, 'vinyl_job', None) is None: 
+        if self.vinyl_active and getattr(self, 'vinyl_job', None) is None:
             self._animate_vinyl()
-        if frame_name == "study" and getattr(self, 'firebase_active', False): 
+        if frame_name == "study" and getattr(self, 'firebase_active', False):
             self._render_github_heatmap()
         if frame_name == "countdown":
             self._refresh_countdown()
+
+        # Slide the incoming screen in over the outgoing one instead of an
+        # instant tkraise() swap — real alpha/fade isn't something Tk widgets
+        # support, so this uses place()-coordinate tweening, which they do.
+        if same_frame or not animate or prev is None or not hasattr(self, "motion"):
+            self.frames[frame_name].place(x=0, y=0, relwidth=1, relheight=1)
+            self.frames[frame_name].tkraise()
+        else:
+            self.motion.slide_transition(prev, self.frames[frame_name])
 
     def _generate_gradient(self, w, h, color1, color2):
         img = Image.new("RGB", (w, h))
