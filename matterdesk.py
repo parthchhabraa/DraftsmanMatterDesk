@@ -215,7 +215,12 @@ class MatterDeskCore:
         self.net_history_rx = [0] * 40
         self.last_net_bytes_tx = psutil.net_io_counters().bytes_sent
         self.last_net_bytes_rx = psutil.net_io_counters().bytes_recv
-        
+
+        # --- Telemetry display state (last value shown, for count-up/down tweens) ---
+        self._telem_cpu_shown = 0.0
+        self._telem_ram_shown = 0.0
+        self._telem_temp_shown = 0.0
+
         # --- DPN State Engine ---
         self.dpn_active = False
         self.dpn_ssid = "Draftsman DPN"
@@ -630,12 +635,23 @@ class MatterDeskCore:
             time.sleep(1)
 
     def _update_telemetry(self, c, r, t, u, s, cc, rc, tc):
-        self.lbl_hw_cpu.config(text=f"CPU: {c}%", fg=cc)
-        self.lbl_hw_ram.config(text=f"RAM: {r}%", fg=rc)
         self.lbl_hw_up.config(text=u)
         self.lbl_hw_sleep.config(text=s)
-        self.lbl_hw_temp.config(text=f"TEMP: {t:.1f}°C", fg=tc)
-        
+
+        # Count the CPU/RAM/temp readouts up or down to the new value instead
+        # of snapping the label text every second — the color still applies
+        # immediately (it's a threshold state, not something to ease).
+        self.motion.animate_number(
+            "telem_cpu", self._telem_cpu_shown, c, 200,
+            lambda v: self.lbl_hw_cpu.config(text=f"CPU: {v:.0f}%", fg=cc))
+        self.motion.animate_number(
+            "telem_ram", self._telem_ram_shown, r, 200,
+            lambda v: self.lbl_hw_ram.config(text=f"RAM: {v:.0f}%", fg=rc))
+        self.motion.animate_number(
+            "telem_temp", self._telem_temp_shown, t, 200,
+            lambda v: self.lbl_hw_temp.config(text=f"TEMP: {v:.1f}°C", fg=tc))
+        self._telem_cpu_shown, self._telem_ram_shown, self._telem_temp_shown = c, r, t
+
         self.telemetry_graph.delete("all")
         max_val = max(max(self.net_history_tx), max(self.net_history_rx), 1.0)
         
