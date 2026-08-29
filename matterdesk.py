@@ -346,11 +346,22 @@ class MatterDeskCore:
         # Slide the incoming screen in over the outgoing one instead of an
         # instant tkraise() swap — real alpha/fade isn't something Tk widgets
         # support, so this uses place()-coordinate tweening, which they do.
+        shows_telemetry_bar = frame_name not in ["boot", "ota", "standby", "study_absolute"]
+
+        def _restore_telemetry_bar_z_order():
+            if shows_telemetry_bar:
+                self.frames["telemetry_bar"].tkraise()
+
         if same_frame or not animate or prev is None or not hasattr(self, "motion"):
-            self.frames[frame_name].place(x=0, y=0, relwidth=1, relheight=1)
+            # width/height="" clears any absolute size a cancelled/interrupted
+            # slide_transition may have left on this frame — place() merges
+            # options rather than resetting them, so relwidth alone isn't
+            # enough (see the same fix in MotionEngine.slide_transition).
+            self.frames[frame_name].place(x=0, y=0, width="", height="", relwidth=1, relheight=1)
             self.frames[frame_name].tkraise()
+            _restore_telemetry_bar_z_order()
         else:
-            self.motion.slide_transition(prev, self.frames[frame_name])
+            self.motion.slide_transition(prev, self.frames[frame_name], on_done=_restore_telemetry_bar_z_order)
 
     def _generate_gradient(self, w, h, color1, color2):
         img = Image.new("RGB", (w, h))

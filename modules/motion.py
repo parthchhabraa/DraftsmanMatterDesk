@@ -170,12 +170,35 @@ class MotionEngine:
         self.tween(70, phase_up, on_complete=phase_down, key=key)
 
     # --- screen/mode transitions: slide, since Tk widgets can't alpha-blend ---
-    def slide_transition(self, outgoing, incoming, duration_ms=220, width=800, height=480):
+    def slide_transition(self, outgoing, incoming, duration_ms=220, width=None, height=None, on_done=None):
         """Slides `incoming` in from the right while `outgoing` slides out to
         the left. Both frames are reset to their normal relwidth/relheight
-        placement on completion so nothing else about frame sizing changes."""
-        outgoing.place(x=0, y=0, width=width, height=height)
-        incoming.place(x=width, y=0, width=width, height=height)
+        placement on completion so nothing else about frame sizing changes.
+
+        width/height default to the window's actual current size
+        (root.winfo_width()/winfo_height()) rather than a hardcoded literal,
+        so the slide doesn't distort content if the window isn't 800x480.
+        They only fall back to 800x480 if the window isn't mapped yet
+        (winfo_width()/winfo_height() report 1 before the first draw).
+
+        on_done, if given, runs after this method's own on_complete cleanup —
+        e.g. so a caller can re-raise a widget (like a status bar) that this
+        transition's incoming.tkraise() would otherwise bury."""
+        if width is None:
+            width = self.core.root.winfo_width()
+            if width <= 1:
+                width = 800
+        if height is None:
+            height = self.core.root.winfo_height()
+            if height <= 1:
+                height = 480
+
+        # place() merges options rather than resetting them, so any relwidth/
+        # relheight left over from a previous transition's on_complete must
+        # be cleared explicitly here, or Tk adds the absolute width/height
+        # below to the still-active relative size instead of replacing it.
+        outgoing.place(x=0, y=0, width=width, height=height, relwidth="", relheight="")
+        incoming.place(x=width, y=0, width=width, height=height, relwidth="", relheight="")
         incoming.tkraise()
 
         def on_update(t):
@@ -187,9 +210,14 @@ class MotionEngine:
 
         def on_complete():
             try:
-                incoming.place(x=0, y=0, relwidth=1, relheight=1)
-                outgoing.place(x=0, y=0, relwidth=1, relheight=1)
+                # Same merge behavior in reverse: clear the absolute width/
+                # height set above, or it stacks with relwidth/relheight and
+                # the frame ends up sized width+width, height+height.
+                incoming.place(x=0, y=0, width="", height="", relwidth=1, relheight=1)
+                outgoing.place(x=0, y=0, width="", height="", relwidth=1, relheight=1)
             except tk.TclError:
                 pass
+            if on_done:
+                on_done()
 
         self.tween(duration_ms, on_update, on_complete=on_complete, key="screen_nav")
