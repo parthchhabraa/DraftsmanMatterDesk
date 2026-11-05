@@ -1,8 +1,12 @@
-# secrets / local runtime data — never commit
-data/brain_config.json
+# secrets / local runtime data, never commit
+config/desk.toml
+data/
 serviceAccountKey.json
 telemetry_data.json
 .cache
+.venv/
 __pycache__/
-modules/__pycache__/
 *.pyc
+.DS_Store
+node_modules/
+brain/.env
