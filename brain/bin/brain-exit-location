@@ -1,0 +1,35 @@
+#!/bin/bash
+# brain-exit-location <direct|proton-config-name>
+# Sends traffic that tailnet devices route through draftsmanbrain (exit node) out
+# through a Proton WireGuard tunnel instead of the home connection. The server's
+# own traffic (apt, Ollama pulls, Murmur) stays direct.
+# Configs: download WireGuard configs from Proton into /etc/wireguard/proton/<name>.conf
+# a parthchhabra production
+set -euo pipefail
+LOC="${1:-}"
+DIR=/etc/wireguard/proton
+RUN=/run/brain-exit
+IFACE=wgexit
+TABLE=51820
+[[ "$LOC" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "bad location name" >&2; exit 2; }
+
+# tear down whatever is up
+if ip link show "$IFACE" >/dev/null 2>&1; then wg-quick down "$RUN/$IFACE.conf" >/dev/null 2>&1 || ip link del "$IFACE" || true; fi
+while ip rule del iif tailscale0 lookup "$TABLE" 2>/dev/null; do :; done
+while ip rule del iif tailscale0 to 100.64.0.0/10 lookup main 2>/dev/null; do :; done
+iptables -t nat -D POSTROUTING -o "$IFACE" -j MASQUERADE 2>/dev/null || true
+
+[[ "$LOC" == "direct" ]] && { echo "exit: direct"; exit 0; }
+
+SRC="$DIR/$LOC.conf"
+[[ -f "$SRC" ]] || { echo "no config $SRC" >&2; exit 3; }
+mkdir -p "$RUN"; chmod 700 "$RUN"
+# Own routing table, and no DNS takeover of the whole server.
+awk 'BEGIN{t=0} /^\s*(DNS|Table)\s*=/{next} {print} /^\[Interface\]/{print "Table = off"}' "$SRC" > "$RUN/$IFACE.conf"
+chmod 600 "$RUN/$IFACE.conf"
+wg-quick up "$RUN/$IFACE.conf" >/dev/null
+ip route replace default dev "$IFACE" table "$TABLE"
+ip rule add iif tailscale0 to 100.64.0.0/10 lookup main priority 5190
+ip rule add iif tailscale0 lookup "$TABLE" priority 5195
+iptables -t nat -A POSTROUTING -o "$IFACE" -j MASQUERADE
+echo "exit: $LOC"

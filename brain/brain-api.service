@@ -1,0 +1,15 @@
+[Unit]
+Description=brain-api v2 (draftsmanbrain companion for MatterDesk)
+After=network-online.target docker.service tailscaled.service
+Wants=network-online.target
+
+[Service]
+User=__USER__
+WorkingDirectory=__DIR__
+EnvironmentFile=__DIR__/.env
+ExecStart=__DIR__/.venv/bin/python brain_api.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
