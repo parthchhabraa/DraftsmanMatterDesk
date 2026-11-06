@@ -7,6 +7,8 @@ X-Device-Key header and can only reach the device endpoints.
 """
 from __future__ import annotations
 
+from typing import Optional, Union
+
 import asyncio
 import contextlib
 import hmac
@@ -161,7 +163,7 @@ def create_app(cfg: Config, desk: Desk | None = None) -> FastAPI:
 
     # ---------------- music ----------------
     @app.post("/api/music/{action}", dependencies=U)
-    def music(action: str, value: str | int | None = Body(None, embed=True)):
+    def music(action: str, value: Optional[Union[str, int]] = Body(None, embed=True)):
         run(desk.spotify.control, action, value)
         return {"ok": True}
 
@@ -171,7 +173,7 @@ def create_app(cfg: Config, desk: Desk | None = None) -> FastAPI:
 
     # ---------------- study ----------------
     @app.post("/api/study/start", dependencies=U)
-    def study_start(subject: str = Body(...), target_min: int | None = Body(None), lockin: bool = Body(False)):
+    def study_start(subject: str = Body(...), target_min: Optional[int] = Body(None), lockin: bool = Body(False)):
         desk.study.begin(subject, target_min, lockin)
         return {"ok": True}
 
@@ -188,11 +190,11 @@ def create_app(cfg: Config, desk: Desk | None = None) -> FastAPI:
     s = desk.store
 
     @app.post("/api/notes", dependencies=U)
-    def note(id: str | None = Body(None), body: str = Body(...), pinned: bool | None = Body(None)):
+    def note(id: Optional[str] = Body(None), body: str = Body(...), pinned: Optional[bool] = Body(None)):
         return {"id": s.save_note(id, body, pinned)}
 
     @app.post("/api/tasks", dependencies=U)
-    def task(text: str = Body(...), subject: str | None = Body(None)):
+    def task(text: str = Body(...), subject: Optional[str] = Body(None)):
         if not text.strip():
             raise HTTPException(400, "empty task")
         s.add_task(text, subject=subject)
@@ -219,7 +221,7 @@ def create_app(cfg: Config, desk: Desk | None = None) -> FastAPI:
         return {"ok": True}
 
     @app.post("/api/countdowns", dependencies=U)
-    def countdown(label: str = Body(...), date: str = Body(...), id: str | None = Body(None)):
+    def countdown(label: str = Body(...), date: str = Body(...), id: Optional[str] = Body(None)):
         run(s.set_countdown, label, date, id)
         return {"ok": True}
 
@@ -248,7 +250,7 @@ def create_app(cfg: Config, desk: Desk | None = None) -> FastAPI:
         return run(b.restart_service, name)
 
     @app.post("/api/brain/exit", dependencies=U)
-    def exit_node(location: str | None = Body(None), advertise: bool | None = Body(None)):
+    def exit_node(location: Optional[str] = Body(None), advertise: Optional[bool] = Body(None)):
         return run(b.set_exit, location, advertise)
 
     @app.post("/api/brain/adguard", dependencies=U)
@@ -264,7 +266,7 @@ def create_app(cfg: Config, desk: Desk | None = None) -> FastAPI:
         return {"models": b.models()}
 
     @app.post("/api/ask", dependencies=U)
-    def ask(messages: list[dict] = Body(...), model: str | None = Body(None)):
+    def ask(messages: list[dict] = Body(...), model: Optional[str] = Body(None)):
         if not b.configured:
             raise HTTPException(400, "Brain is not configured")
         msgs = [{"role": m.get("role", "user"), "content": str(m.get("content", ""))[:8000]} for m in messages[-20:]]
@@ -323,11 +325,11 @@ def create_app(cfg: Config, desk: Desk | None = None) -> FastAPI:
         return {"commands": desk.devices.wait_commands(dev, min(wait, 50))}
 
     @app.post("/api/devices/{dev}/{cmd}", dependencies=U)
-    def device_cmd(dev: str, cmd: str, arg: str | int | None = Body(None, embed=True)):
+    def device_cmd(dev: str, cmd: str, arg: Optional[Union[str, int]] = Body(None, embed=True)):
         return run(desk.devices.command, dev, cmd, arg)
 
     @app.post("/api/inbox", dependencies=D)
-    def inbox_upload(source: str = Form("iphone"), text: str = Form(""), file: UploadFile | None = File(None)):
+    def inbox_upload(source: str = Form("iphone"), text: str = Form(""), file: Optional[UploadFile] = File(None)):
         content = file.file.read() if file else b""
         if not content and not text.strip():
             raise HTTPException(400, "send a file or text")
@@ -348,8 +350,8 @@ def create_app(cfg: Config, desk: Desk | None = None) -> FastAPI:
         return {"ok": True}
 
     @app.post("/api/dpn", dependencies=U)
-    def dpn(on: bool | None = Body(None), force_vpn: bool | None = Body(None), adblock: bool | None = Body(None),
-            ssid: str | None = Body(None)):
+    def dpn(on: Optional[bool] = Body(None), force_vpn: Optional[bool] = Body(None), adblock: Optional[bool] = Body(None),
+            ssid: Optional[str] = Body(None)):
         desk.network.dpn_set(on, force_vpn, adblock, ssid)
         return {"ok": True}
 

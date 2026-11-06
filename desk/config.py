@@ -7,7 +7,11 @@ sets [brain] token. No secret is ever read from source code.
 from __future__ import annotations
 
 import os
-import tomllib
+
+try:
+    import tomllib
+except ModuleNotFoundError:   # Python 3.9/3.10 (macOS system python)
+    import tomli as tomllib
 from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
 

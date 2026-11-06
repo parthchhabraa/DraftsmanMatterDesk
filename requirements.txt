@@ -5,3 +5,4 @@ psutil>=5.9
 python-multipart>=0.0.9
 spotipy>=2.23
 evdev>=1.6; sys_platform == "linux"
+tomli>=2.0; python_version < "3.11"

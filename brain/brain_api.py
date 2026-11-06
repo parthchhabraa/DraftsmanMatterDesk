@@ -17,6 +17,8 @@ a parthchhabra production
 """
 from __future__ import annotations
 
+from typing import Optional, Union
+
 import json
 import mimetypes
 import os
@@ -206,7 +208,7 @@ def tailnet():
 
 
 @app.post("/exitnode", dependencies=A)
-def exitnode(location: str | None = Body(None), advertise: bool | None = Body(None)):
+def exitnode(location: Optional[str] = Body(None), advertise: Optional[bool] = Body(None)):
     if advertise is not None:
         r = sh(["sudo", "-n", "tailscale", "set", f"--advertise-exit-node={'true' if advertise else 'false'}"])
         if r.returncode:
@@ -303,7 +305,7 @@ def ask_models():
 
 
 @app.post("/ask", dependencies=A)
-def ask(messages: list[dict] = Body(...), model: str | None = Body(None)):
+def ask(messages: list[dict] = Body(...), model: Optional[str] = Body(None)):
     body = {"model": model or ASK_MODEL, "stream": True,
             "messages": [{"role": "system", "content": ASK_SYSTEM}] + [
                 {"role": m.get("role", "user"), "content": str(m.get("content", ""))} for m in messages[-20:]]}
@@ -361,7 +363,7 @@ def _transcribe(item_id: str, path: str, ctype: str):
 
 
 @app.post("/inbox", dependencies=A)
-def inbox_add(source: str = Form("unknown"), text: str = Form(""), file: UploadFile | None = File(None)):
+def inbox_add(source: str = Form("unknown"), text: str = Form(""), file: Optional[UploadFile] = File(None)):
     item_id = f"{int(time.time())}-{secrets.token_hex(3)}"
     path, ctype, name, size = "", "", "", 0
     if file is not None and file.filename:
@@ -391,7 +393,7 @@ def inbox_add(source: str = Form("unknown"), text: str = Form(""), file: UploadF
 
 
 @app.get("/inbox", dependencies=A)
-def inbox_list(limit: int = 40, source: str | None = None):
+def inbox_list(limit: int = 40, source: Optional[str] = None):
     q = "SELECT id, source, kind, name, text, at, size FROM items"
     args: list = []
     if source:
