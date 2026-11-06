@@ -83,6 +83,10 @@ def create_app(cfg: Config, desk: Desk | None = None) -> FastAPI:
 
     app.mount("/ui", StaticFiles(directory=UI), name="ui")
 
+    @app.get("/favicon.ico", include_in_schema=False)
+    def favicon():
+        return Response(status_code=204)
+
     @app.get("/api/health")
     def health():
         return {"ok": True, "version": VERSION, "demo": cfg.demo}
