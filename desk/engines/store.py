@@ -9,11 +9,15 @@ import datetime as dt
 import json
 import os
 import random
+import re
 import threading
 import time
 import uuid
 
 from .base import Engine
+
+
+ARTIFACT_RE = re.compile(r"https://claude\.ai/(?:code/)?artifact/[A-Za-z0-9_-]+")
 
 
 def _id() -> str:
@@ -27,9 +31,10 @@ class StoreEngine(Engine):
         super().__init__(desk)
         self.path = self.cfg.data_dir / "desk.json"
         self._lock = threading.Lock()
-        self.data = {"notes": [], "tasks": [], "cards": [], "countdowns": []}
+        self.data = {"notes": [], "tasks": [], "cards": [], "countdowns": [], "artifacts": []}
         if self.path.exists():
             self.data.update(json.loads(self.path.read_text()))
+            self.data.setdefault("artifacts", [])
         else:
             try:
                 self._import_v5()
@@ -56,6 +61,7 @@ class StoreEngine(Engine):
         self.hub.publish("desk", {
             "notes": sorted(d["notes"], key=lambda n: -n.get("updated", 0)),
             "tasks": d["tasks"], "cards": d["cards"], "countdowns": cds,
+            "artifacts": sorted(d["artifacts"], key=lambda a: -max(a.get("opened") or 0, a.get("added") or 0)),
         })
 
     def _save(self):
@@ -128,6 +134,49 @@ class StoreEngine(Engine):
                     c["label"], c["date"] = label, date
                     return
             d["countdowns"].append({"id": _id(), "label": label, "date": date})
+        self.mutate(f)
+
+    # ---------- Claude artifacts shelf ----------
+    def add_artifact(self, url: str, title: str = "", source: str = "desk") -> bool:
+        url = url.strip().split("?")[0].split("#")[0]
+        if not url.startswith("https://"):
+            raise ValueError("Paste a full https link")
+
+        def f(d):
+            if any(a["url"] == url for a in d["artifacts"]):
+                return False
+            d["artifacts"].append({"id": _id(), "url": url, "title": title.strip()[:120], "source": source,
+                                   "added": time.time(), "opened": None})
+            return True
+        return self.mutate(f)
+
+    def absorb_links(self, text: str, source: str) -> int:
+        """Pick claude.ai artifact links out of shared text (iPhone share sheet, inbox)."""
+        return sum(self.add_artifact(u, source=source) for u in ARTIFACT_RE.findall(text or ""))
+
+    def artifact_opened(self, url: str):
+        def f(d):
+            for a in d["artifacts"]:
+                if url.startswith(a["url"]):
+                    a["opened"] = time.time()
+        self.mutate(f)
+
+    def artifact_title(self, url: str, title: str):
+        title = re.sub(r"\s*[|\u2013-]\s*Claude$", "", title).strip()
+        if not title or title.lower() in ("claude", "sign in"):
+            return
+
+        def f(d):
+            for a in d["artifacts"]:
+                if url.startswith(a["url"]) and not a.get("title"):
+                    a["title"] = title[:120]
+        self.mutate(f)
+
+    def rename_artifact(self, aid: str, title: str):
+        def f(d):
+            for a in d["artifacts"]:
+                if a["id"] == aid:
+                    a["title"] = title.strip()[:120]
         self.mutate(f)
 
     # ---------- migration ----------

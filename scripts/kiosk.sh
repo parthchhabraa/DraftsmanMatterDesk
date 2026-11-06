@@ -21,7 +21,9 @@ if [ -n "${WAYLAND_DISPLAY:-}" ]; then PLATFORM="--ozone-platform=wayland"; else
 command -v unclutter >/dev/null && [ -n "${DISPLAY:-}" ] && unclutter -idle 0.5 -root &
 
 while true; do
-  "$BROWSER" --kiosk --app="$BASE/" $PLATFORM \
+  # 9222 is the localhost-only DevTools port the desk uses to open artifacts and bring you back.
+  "$BROWSER" --kiosk --app="$BASE/?kiosk" $PLATFORM \
+    --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 --remote-allow-origins=http://127.0.0.1:8420 \
     --noerrdialogs --disable-infobars --no-first-run --disable-session-crashed-bubble \
     --disable-pinch --overscroll-history-navigation=0 --disable-features=Translate,TouchpadOverscrollHistoryNavigation \
     --check-for-update-interval=31536000 --password-store=basic \

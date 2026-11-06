@@ -17,6 +17,7 @@ a parthchhabra production
 | Study | Sprint timer by subject, 25/50/90/open, Lock-in, 20-week heatmap, streak, focus view that drifts so nothing burns in |
 | Brain | draftsmanbrain CPU/RAM/disk, every service and container with Restart, Wake desktop, Inbox |
 | Ask | Chat with the Ollama model on draftsmanbrain, streamed. Mic goes through Murmur |
+| Claude | A shelf of your Claude artifacts. Tap one and it opens full screen on the desk; Back to desk (or a triple-tap) returns. Share an artifact link from the iPhone with Send to Desk to add it |
 | Network | Tailnet devices, exit node on/off and Proton exit location, AdGuard stats, home Wi-Fi map with block, the DPN hotspot with QR |
 | Devices | Mac battery/CPU/front app, Lock, Display off, Send text to clipboard, Notify, Keep awake. iPhone and iPad battery and Focus |
 | Music | Spotify now playing, transport, volume, playlists, output device. AirPlay receiver |

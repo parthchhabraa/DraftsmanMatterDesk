@@ -1,4 +1,4 @@
-import { $, S, api, emit, h, hm, led, pad2, toast, watch } from "./core.js";
+import { $, S, api, clockText, emit, h, hm, led, toast, watch } from "./core.js";
 import { KIOSK } from "./osk.js";
 import home from "./screens/home.js";
 import study from "./screens/study.js";
@@ -8,9 +8,10 @@ import network from "./screens/network.js";
 import devices from "./screens/devices.js";
 import music from "./screens/music.js";
 import desk from "./screens/desk.js";
+import claude from "./screens/claude.js";
 import system from "./screens/system.js";
 
-const PAGES = [home, study, brain, ask, network, devices, music, desk, system];
+const PAGES = [home, study, brain, ask, claude, network, devices, music, desk, system];
 const pageEl = $("#page"), keysEl = $("#keys"), railEl = $("#rail"), stripEl = $("#strip"), board = $("#board");
 let current = null;
 let lastTouch = Date.now();
@@ -28,7 +29,7 @@ export function go(id, opts) {
     if (b.dataset.id === id) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
   }
   paintStrip();
-  if (!KIOSK) history.replaceState(null, "", `#${id}`);
+  history.replaceState(null, "", `${location.search}#${id}`);
 }
 window.desk = { go };
 
@@ -45,6 +46,7 @@ function railLeds() {
   const devs = Object.values(st.devices || {});
   set("devices", devs.some((d) => !d.stale && d.battery != null && d.battery <= 20 && !d.charging) ? "warn" : "");
   set("network", st.dpn?.on ? "ok" : st.adguard?.focus ? "warn" : "");
+  set("claude", st.viewer?.open ? "ok" : "");
   set("system", st.pi?.panic ? "fault blink" : (st.pi?.temp || 0) > 75 ? "warn" : "");
   for (const e of railEl.querySelectorAll(".led")) e.style.visibility = e.className.trim() === "led" ? "hidden" : "visible";
 }
@@ -59,7 +61,7 @@ function paintStrip() {
   const mac = st.devices?.mac;
   if (mac && !mac.stale && mac.battery != null) items.push(h("span.si.opt", `Mac ${mac.battery}%${mac.charging ? " charging" : ""}`));
   if (st.pi && st.pi.temp > 0) items.push(h("span.si.opt", { class: st.pi.temp > 75 ? "warn-t" : "" }, `Pi ${Math.round(st.pi.temp)}°`));
-  items.push(h("span.si.clock", `${pad2(now.getHours())}:${pad2(now.getMinutes())}`));
+  items.push(h("span.si.clock", clockText(now)));
   stripEl.replaceChildren(...items);
 }
 
@@ -82,7 +84,7 @@ function standby(asleep) {
   if (!asleep) return;
   const t = el.firstElementChild;
   const move = () => {
-    const d = new Date(); t.textContent = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+    t.textContent = clockText(new Date());
     t.style.left = `${40 + Math.random() * (innerWidth - 220)}px`; t.style.top = `${30 + Math.random() * (innerHeight - 100)}px`;
   };
   move(); standbyTimer = setInterval(move, 8000);
@@ -110,7 +112,7 @@ function connect() {
       S.state = m.snapshot; S.logs = m.logs || []; S.connected = true; retry = 0;
       clearTimeout(offlineTimer); $(".offline-banner")?.remove();
       applyTheme(); standby(S.state.display?.asleep);
-      if (!current) go((!KIOSK && location.hash.slice(1)) || "home"); else go(current.id);
+      if (!current) go(location.hash.slice(1) || "home"); else go(current.id);
       railLeds(); bootDone();
       return;
     }
@@ -119,7 +121,7 @@ function connect() {
       if (m.t === "display") standby(m.d?.asleep);
       if (m.t === "ota") ota(m.d);
       if (m.t === "meta") applyTheme();
-      if (["brain", "timer", "devices", "pi", "music", "dpn", "adguard"].includes(m.t)) { railLeds(); paintStrip(); }
+      if (["brain", "timer", "devices", "pi", "music", "dpn", "adguard", "viewer"].includes(m.t)) { railLeds(); paintStrip(); }
       if (current?.topics?.includes(m.t) || current?.topics?.includes("*")) current.update(S.state, new Set([m.t]));
       emit(new Set([m.t]));
     } else if (m.e === "toast") toast(m.d.text, m.d.level);
@@ -140,6 +142,36 @@ document.addEventListener("pointerdown", () => {
   closeFocusView();
   if (Date.now() - lastPing > 4000 && ws?.readyState === 1) { ws.send("activity"); lastPing = Date.now(); }
 }, { capture: true });
+
+// ---------------------------------------------------------------- drag to scroll
+// Real touch scrolls natively. Some Pi touch panels reach Chromium as a mouse,
+// which cannot drag-scroll, so do it here: a drag past 8 px scrolls and cancels the tap.
+if (KIOSK) {
+  let drag = null, moved = false;
+  const scroller = (el) => {
+    if (el.closest?.(".slider, .osk, canvas")) return null;
+    for (; el && el !== document.documentElement; el = el.parentElement) {
+      const oy = getComputedStyle(el).overflowY;
+      if ((oy === "auto" || oy === "scroll") && el.scrollHeight > el.clientHeight + 1) return el;
+    }
+    return null;
+  };
+  document.addEventListener("pointerdown", (e) => {
+    moved = false;
+    if (e.pointerType === "touch") { drag = null; return; }
+    const el = scroller(e.target);
+    drag = el ? { el, y: e.clientY, top: el.scrollTop } : null;
+  }, true);
+  document.addEventListener("pointermove", (e) => {
+    if (!drag || !(e.buttons & 1)) return;
+    const dy = e.clientY - drag.y;
+    if (!moved && Math.abs(dy) < 8) return;
+    moved = true;
+    drag.el.scrollTop = drag.top - dy;
+  }, true);
+  document.addEventListener("pointerup", () => { drag = null; }, true);
+  document.addEventListener("click", (e) => { if (moved) { e.stopPropagation(); e.preventDefault(); moved = false; } }, true);
+}
 
 // ---------------------------------------------------------------- focus view during a sprint
 let focusEl = null, focusUnwatch = null;

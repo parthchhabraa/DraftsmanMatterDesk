@@ -82,3 +82,23 @@ def test_mac_command_queue(app, monkeypatch):
         cmds = c.get("/api/agent/mac/commands?wait=1").json()["commands"]
         assert cmds and cmds[0]["cmd"] == "clipboard" and cmds[0]["arg"] == "hello"
         assert c.post("/api/devices/mac/rm-rf", json={"arg": None}).status_code == 400
+
+
+def test_artifact_shelf_from_share_sheet(app):
+    with TestClient(app, client=("100.64.1.9", 5000)) as c:
+        h = {"X-Device-Key": "device-secret"}
+        shared = "Look at this https://claude.ai/artifact/15jeh2kKfXtk9tG3jtgLRQ?x=1 nice"
+        r = c.post("/api/inbox", data={"source": "iphone", "text": shared}, headers=h)
+        assert r.json()["kind"] == "artifact"
+        c.post("/api/inbox", data={"source": "iphone", "text": shared}, headers=h)   # duplicate ignored
+        shelf = app.state.desk.hub.get("desk")["artifacts"]
+        assert [a["url"] for a in shelf] == ["https://claude.ai/artifact/15jeh2kKfXtk9tG3jtgLRQ"]
+        d = app.state.desk
+        d.store.artifact_title(shelf[0]["url"], "JEE 150 - Claude")
+        assert d.hub.get("desk")["artifacts"][0]["title"] == "JEE 150"
+
+
+def test_viewer_only_opens_https(app):
+    with TestClient(app) as c:
+        assert c.post("/api/viewer/open", json={"url": "http://evil.example"}).status_code == 400
+        assert c.post("/api/viewer/open", json={"url": "https://claude.ai/artifact/abc"}).status_code == 200

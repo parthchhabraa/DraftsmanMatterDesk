@@ -2,8 +2,14 @@
 // on a phone or Mac it uses the device's own keyboard.
 import { h, sheet } from "./core.js";
 
-export const KIOSK = ["127.0.0.1", "localhost"].includes(location.hostname) && !matchMedia("(pointer: fine)").matches
-  || new URLSearchParams(location.search).has("kiosk");
+// The Pi's Chromium opens /?kiosk. A touchscreen can still report a "fine" pointer
+// on Wayland, so the address is the signal, not the input type.
+export const KIOSK = (() => {
+  const local = ["127.0.0.1", "localhost"].includes(location.hostname);
+  if (new URLSearchParams(location.search).has("kiosk")) { try { sessionStorage.setItem("md-kiosk", "1"); } catch {} return true; }
+  try { if (sessionStorage.getItem("md-kiosk")) return true; } catch {}
+  return local && matchMedia("(any-pointer: coarse)").matches;
+})();
 
 const ROWS = {
   abc: ["1234567890", "qwertyuiop", "asdfghjkl'", "zxcvbnm,.?"],

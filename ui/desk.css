@@ -61,7 +61,8 @@ input, textarea { font: inherit; color: var(--silk); }
 #rail { grid-area: rail; display: flex; flex-direction: column; border-right: 1px solid var(--trace); background: var(--mask-deep); }
 #strip { grid-area: strip; display: flex; align-items: center; gap: 18px; padding: 0 var(--gap); border-bottom: 1px solid var(--trace); color: var(--silk-dim); font-size: 13px; white-space: nowrap; overflow: hidden; }
 #page { grid-area: page; position: relative; overflow: hidden; }
-#keys { grid-area: keys; display: flex; flex-direction: column; gap: 8px; padding: 10px; border-left: 1px solid var(--trace); width: 128px; }
+#keys { grid-area: keys; display: flex; flex-direction: column; gap: 8px; padding: 10px; border-left: 1px solid var(--trace); width: 128px; overflow-y: auto; }
+#keys > * { flex-shrink: 0; }
 #keys:empty { display: none; }
 
 /* rail: soft-keys down the left edge like an MFD bezel */
@@ -102,9 +103,15 @@ input, textarea { font: inherit; color: var(--silk); }
 #keys .klabel:first-child { margin-top: 0; }
 #keys .spacer { flex: 1; }
 
-.page { position: absolute; inset: 0; padding: var(--gap); display: flex; flex-direction: column; gap: var(--gap); overflow: hidden; }
-.scroll { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; min-height: 0; }
-.scroll::-webkit-scrollbar { display: none; }
+.page { position: absolute; inset: 0; padding: var(--gap); display: flex; flex-direction: column; gap: var(--gap); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
+.scroll { overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
+/* thin copper-trace rail so it is clear a list goes further */
+.page, .scroll, #keys, .sheet, .picks { scrollbar-width: thin; scrollbar-color: var(--trace-hi) transparent; }
+.page::-webkit-scrollbar, .scroll::-webkit-scrollbar, #keys::-webkit-scrollbar, .sheet::-webkit-scrollbar { width: 5px; }
+.page::-webkit-scrollbar-thumb, .scroll::-webkit-scrollbar-thumb, #keys::-webkit-scrollbar-thumb, .sheet::-webkit-scrollbar-thumb { background: var(--trace-hi); }
+/* nothing in a column squashes below its content; only .grow/.scroll areas give way */
+.page > *, .col > * { flex-shrink: 0; }
+.page > .grow, .col > .grow, .page > .scroll, .col > .scroll { flex-shrink: 1; }
 .row { display: flex; gap: var(--gap); min-height: 0; }
 .col { display: flex; flex-direction: column; gap: var(--gap); min-width: 0; min-height: 0; }
 .grow { flex: 1; }
@@ -157,11 +164,12 @@ input, textarea { font: inherit; color: var(--silk); }
 .home .left { padding: 18px 20px 16px; display: flex; flex-direction: column; border-right: 1px solid var(--trace); min-height: 0; }
 .home .time { font-family: "B612", sans-serif; font-weight: 700; font-size: 118px; line-height: .9; letter-spacing: -2px; color: var(--silk); margin-left: -4px; }
 .home .time .colon { color: var(--silk-faint); margin: 0 2px; }
+.home .time .ampm { font-size: 30px; letter-spacing: 0; color: var(--silk-dim); margin-left: 12px; font-weight: 400; }
 .home .agenda { margin-top: 16px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
 .home .agenda .ag { display: flex; gap: 10px; align-items: baseline; text-align: left; }
 .home .agenda .ag i { width: 8px; height: 8px; flex: none; box-shadow: inset 0 0 0 1px var(--silk-faint); }
 .home .date { font-size: 21px; margin-top: 10px; }
-.home .wx { margin-top: 4px; color: var(--silk-dim); font-size: 15px; }
+.home .wx { margin-top: 4px; color: var(--silk-dim); font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .home .wx b { color: var(--silk); font-weight: 400; }
 .home .goal { margin-top: auto; }
 .home .goal .lbl { display: flex; justify-content: space-between; margin-bottom: 7px; font-size: 14px; }
@@ -257,7 +265,7 @@ input.field, textarea.field { border: 0; outline: 0; user-select: text; -webkit-
 /* ------------------------------------------------------------------ overlays */
 #layer:empty { display: none; }
 .sheet-bg { position: fixed; inset: 0; background: rgba(4, 14, 10, .78); z-index: 50; display: flex; align-items: flex-end; justify-content: center; }
-.sheet { width: 100%; max-width: 800px; background: var(--mask); border-top: 1px solid var(--trace-hi); padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; max-height: 100%; }
+.sheet { width: 100%; max-width: 800px; background: var(--mask); border-top: 1px solid var(--trace-hi); padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; max-height: 100%; overflow-y: auto; }
 .sheet .title { display: flex; align-items: center; gap: 12px; }
 .sheet .title .h { flex: 1; }
 .dialog-bg { align-items: center; }

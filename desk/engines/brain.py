@@ -106,7 +106,11 @@ class BrainEngine(Engine):
             return self.hub.publish("inbox", self._demo_inbox)
         if self.version < 2:
             return
-        self.hub.publish("inbox", self._get("/inbox", params={"limit": 40}))
+        ib = self._get("/inbox", params={"limit": 40})
+        for it in ib.get("items", []):
+            if it.get("kind") == "link" and "claude.ai/" in (it.get("text") or "") and self.desk.store.absorb_links(it["text"], it.get("source", "inbox")):
+                self.hub.toast("Added a Claude artifact to the shelf")
+        self.hub.publish("inbox", ib)
 
     # ---------- actions ----------
     def wol(self, target: str):

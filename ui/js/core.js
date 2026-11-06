@@ -52,6 +52,20 @@ export async function act(btn, fn, okText) {
 
 // ---------------------------------------------------------------- formatting
 export const pad2 = (n) => String(n).padStart(2, "0");
+export const use12 = () => { try { return localStorage.getItem("md-clock") !== "24"; } catch { return true; } };
+// {hm: "3:25", ap: "pm"} or {hm: "15:25", ap: ""}
+export function clock(d = new Date()) {
+  const H = d.getHours(), M = pad2(d.getMinutes());
+  if (!use12()) return { hm: `${pad2(H)}:${M}`, ap: "" };
+  return { hm: `${H % 12 || 12}:${M}`, ap: H < 12 ? "am" : "pm" };
+}
+export const clockText = (d) => { const c = clock(d); return c.ap ? `${c.hm} ${c.ap}` : c.hm; };
+// "17:41" or "17:41:05" from the server -> "5:41 pm"
+export function hhmm(s) {
+  if (!s || !use12()) return s || "";
+  const [H, M, S] = s.split(":").map(Number);
+  return `${H % 12 || 12}:${pad2(M)}${S != null && !isNaN(S) ? ":" + pad2(S) : ""} ${H < 12 ? "am" : "pm"}`;
+}
 export function hm(sec) { sec = Math.max(0, Math.round(sec)); const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60; return h ? `${h}:${pad2(m)}:${pad2(s)}` : `${pad2(m)}:${pad2(s)}`; }
 export function mins(m) { m = Math.round(m || 0); return m >= 60 ? `${Math.floor(m / 60)}h ${pad2(m % 60)}m` : `${m}m`; }
 export function ago(s) { if (s == null) return "never"; if (s < 90) return "just now"; if (s < 3600) return `${Math.round(s / 60)} min ago`; if (s < 86400) return `${Math.round(s / 3600)} h ago`; return `${Math.round(s / 86400)} d ago`; }

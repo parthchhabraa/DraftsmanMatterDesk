@@ -139,9 +139,12 @@ class SystemEngine(Engine):
                         self.desk.call_ui(self.wake)
                         continue
                     self.last_activity = now
-                    if len(taps) >= 3 and self.desk.airplay.running:
+                    if len(taps) >= 3 and (self.desk.airplay.running or self.desk.viewer.open):
                         taps.clear()
-                        self.desk.call_ui(self.desk.airplay.stop)
+                        if self.desk.airplay.running:
+                            self.desk.call_ui(self.desk.airplay.stop)
+                        else:
+                            self.desk.call_ui(self.desk.viewer.back)
             except OSError as e:
                 self.hub.note(f"touch device: {e}", "warn")
                 self._stop.wait(10)

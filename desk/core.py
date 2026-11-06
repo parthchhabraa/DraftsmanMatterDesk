@@ -10,6 +10,7 @@ from .engines.spotify import SpotifyEngine
 from .engines.store import StoreEngine
 from .engines.study import StudyEngine
 from .engines.system import SystemEngine
+from .engines.viewer import ViewerEngine
 from .engines.weather import WeatherEngine
 from .hub import Hub
 
@@ -32,8 +33,9 @@ class Desk:
         self.devices = DevicesEngine(self)
         self.study = StudyEngine(self)
         self.network = NetworkEngine(self)
+        self.viewer = ViewerEngine(self)
         self.engines = [self.system, self.airplay, self.weather, self.spotify, self.store,
-                        self.brain, self.devices, self.study, self.network]
+                        self.brain, self.devices, self.study, self.network, self.viewer]
 
     def call_ui(self, fn, *args):
         """Engines are thread-safe; kept as one place to hop threads if that changes."""

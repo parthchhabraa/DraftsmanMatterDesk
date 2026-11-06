@@ -1,4 +1,4 @@
-import { bar, h, mins, pad2, sk, led } from "../core.js";
+import { bar, clock as now12, h, hhmm, mins, sk, led } from "../core.js";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -8,7 +8,8 @@ let els, clockTimer;
 
 function clock() {
   const d = new Date();
-  els.time.replaceChildren(pad2(d.getHours()), h("span.colon", ":"), pad2(d.getMinutes()));
+  const c = now12(d), [hh, mm] = c.hm.split(":");
+  els.time.replaceChildren(hh, h("span.colon", ":"), mm, c.ap ? h("span.ampm", c.ap) : null);
   els.date.textContent = `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
 }
 
@@ -33,7 +34,7 @@ export default {
   unmount() { clearInterval(clockTimer); },
   update(st) {
     const w = st.weather;
-    els.wx.replaceChildren(...(w ? [h("b", `${w.temp}°`), ` ${w.desc}, ${w.low}° to ${w.high}°. Sunset ${w.sunset}`] : [sk("line", "70%")]));
+    els.wx.replaceChildren(...(w ? [h("b", `${w.temp}°`), ` ${w.desc}, sunset ${hhmm(w.sunset)}`] : [sk("line", "70%")]));
 
     const open = (st.desk?.tasks || []).filter((x) => !x.done);
     els.agenda.replaceChildren(...open.slice(0, 3).map((x) => h("button.ag", { onclick: () => go("desk", { tab: "tasks" }) }, h("i"), h("span.ellip", x.text))),

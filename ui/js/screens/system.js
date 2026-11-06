@@ -1,4 +1,4 @@
-import { S, act, api, confirmBox, h, led, level, pick, skLines, spark, toast, uptime, watch, put } from "../core.js";
+import { S, act, api, confirmBox, h, led, level, pick, skLines, spark, toast, uptime, watch, put, hhmm, use12 } from "../core.js";
 import { textInput } from "../osk.js";
 
 let tab = "pi", els, keys, wifi = null, unwatch, results = {};
@@ -61,7 +61,7 @@ function displayTest() {
 function logs() {
   if (!S.logs.length) return h("div.empty", "Nothing logged yet.");
   return h("div.scroll.grow", ...S.logs.slice(0, 150).map((l) => h("div.svc", led(l.level === "error" ? "fault" : l.level === "warn" ? "warn" : ""),
-    h("span.num.small.dim", { style: { width: "70px" } }, l.ts), h("span.name", { style: { whiteSpace: "normal" } }, l.msg))));
+    h("span.num.small.dim", { style: { width: "100px" } }, hhmm(l.ts)), h("span.name", { style: { whiteSpace: "normal" } }, l.msg))));
 }
 
 async function scanWifi() { wifi = null; page.update(S.state, new Set(["*"])); try { wifi = (await api("/api/wifi")).networks; } catch (e) { wifi = []; toast(e.message, "danger"); } page.update(S.state, new Set(["*"])); }
@@ -78,6 +78,7 @@ function paintKeys() {
       paintKeys();
     } }, `Colours: ${theme}`),
     h("button.pad.ghost", { onclick: async () => { if (await confirmBox("Download and install the latest MatterDesk from GitHub?", "Update")) api("/api/ota", {}); } }, "Update"),
+    h("button.pad.ghost", { onclick: () => { localStorage.setItem("md-clock", use12() ? "24" : "12"); paintKeys(); window.desk.go("system"); } }, `Clock: ${use12() ? "12h" : "24h"}`),
     h("div.spacer"),
     h("button.pad.danger", { onclick: async () => {
       const a = await pick("Power", [["restart-desk", "Restart the desk app"], ["reboot", "Restart the Pi"], ["poweroff", "Shut down the Pi"]]);

@@ -56,7 +56,8 @@ Images, URLs, Text and Files.
      - for a photo or file: `file` (File) = *Shortcut Input*
      - for a link or text: `text` (Text) = *Shortcut Input*
 
-The item lands in the brain inbox and shows on the desk. From the desk you can
+The item lands in the brain inbox and shows on the desk. A claude.ai artifact link goes
+straight onto the desk's Claude shelf instead: in the Claude app, Share on an artifact, then Send to Desk. From the desk you can
 send it straight on to the Mac.
 
 Penotron and Anamnis post to the same place on draftsmanbrain directly

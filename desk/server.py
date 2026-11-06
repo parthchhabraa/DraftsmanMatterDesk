@@ -230,10 +230,36 @@ def create_app(cfg: Config, desk: Desk | None = None) -> FastAPI:
         if kind == "inbox":
             run(desk.brain.inbox_delete, item_id)
             return {"ok": True}
-        table = {"notes": "notes", "tasks": "tasks", "cards": "cards", "countdowns": "countdowns"}.get(kind)
+        table = {"notes": "notes", "tasks": "tasks", "cards": "cards", "countdowns": "countdowns", "artifacts": "artifacts"}.get(kind)
         if not table:
             raise HTTPException(404)
         s.delete(table, item_id)
+        return {"ok": True}
+
+    @app.post("/api/artifacts", dependencies=D)
+    def artifact_add(url: str = Body(...), title: str = Body("")):
+        if not run(s.add_artifact, url, title, "desk"):
+            return {"ok": True, "duplicate": True}
+        return {"ok": True}
+
+    @app.post("/api/artifacts/import", dependencies=U)
+    def artifact_import(items: list[dict] = Body(..., embed=True)):
+        added = sum(bool(s.add_artifact(i["url"], i.get("title", ""), "import")) for i in items if i.get("url"))
+        return {"added": added}
+
+    @app.post("/api/artifacts/{aid}/rename", dependencies=U)
+    def artifact_rename(aid: str, title: str = Body(..., embed=True)):
+        s.rename_artifact(aid, title)
+        return {"ok": True}
+
+    @app.post("/api/viewer/open", dependencies=U)
+    def viewer_open(url: str = Body(..., embed=True)):
+        run(desk.viewer.show, url)
+        return {"ok": True}
+
+    @app.post("/api/viewer/back", dependencies=U)
+    def viewer_back():
+        desk.viewer.back()
         return {"ok": True}
 
     # ---------------- brain ----------------
@@ -333,6 +359,9 @@ def create_app(cfg: Config, desk: Desk | None = None) -> FastAPI:
         content = file.file.read() if file else b""
         if not content and not text.strip():
             raise HTTPException(400, "send a file or text")
+        if not content and "claude.ai/" in text and desk.store.absorb_links(text, source[:24]):
+            hub.toast("Added to the Claude shelf")
+            return {"kind": "artifact"}
         item = run(b.inbox_upload, source[:24], (file.filename if file else "") or "note.txt", content,
                    (file.content_type if file else "") or "text/plain", text)
         hub.toast(f"New in inbox from {source}")
