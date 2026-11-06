@@ -16,6 +16,8 @@ import sys
 def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else "serve"
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    for noisy in ("httpx", "httpcore", "spotipy", "urllib3"):   # one line per poll every 5 s floods the journal
+        logging.getLogger(noisy).setLevel(logging.WARNING)
     if cmd == "key":
         print(secrets.token_urlsafe(24))
         return
