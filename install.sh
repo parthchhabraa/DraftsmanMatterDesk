@@ -8,7 +8,7 @@ say(){ printf '\n== %s\n' "$*"; }
 
 say "system packages"
 sudo apt-get update -qq
-sudo apt-get install -y -qq python3-venv python3-evdev curl git network-manager hostapd dnsmasq wireguard-tools nmap >/dev/null
+sudo apt-get install -y -qq python3-venv python3-evdev curl git util-linux network-manager hostapd dnsmasq wireguard-tools nmap >/dev/null
 sudo apt-get install -y -qq chromium-browser >/dev/null 2>&1 || sudo apt-get install -y -qq chromium >/dev/null
 sudo apt-get install -y -qq uxplay >/dev/null 2>&1 || echo "uxplay not in apt here; AirPlay stays off until it is installed"
 sudo systemctl disable --now hostapd dnsmasq >/dev/null 2>&1 || true   # the desk starts them when the hotspot is on
@@ -58,14 +58,7 @@ sudo systemctl enable --now matterdesk.service
 sudo systemctl restart matterdesk.service
 
 say "kiosk on boot"
-LINE="$DIR/scripts/kiosk.sh &"
-mkdir -p ~/.config/labwc
-grep -qF "$DIR/scripts/kiosk.sh" ~/.config/labwc/autostart 2>/dev/null || echo "$LINE" >> ~/.config/labwc/autostart
-if [ -f ~/.config/wayfire.ini ]; then
-  sed -i '/^matterdesk *=/d' ~/.config/wayfire.ini
-  grep -q '^\[autostart\]' ~/.config/wayfire.ini || printf '\n[autostart]\n' >> ~/.config/wayfire.ini
-  sed -i "/^\[autostart\]/a matterdesk = $DIR/scripts/kiosk.sh" ~/.config/wayfire.ini
-fi
+"$DIR/scripts/kiosk-setup.sh"
 
 say "check"
 for i in $(seq 1 40); do curl -fsS http://127.0.0.1:8420/api/health 2>/dev/null && { echo; break; }; sleep 1; done
