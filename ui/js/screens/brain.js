@@ -47,6 +47,7 @@ function openItem(it) {
 
 function inbox(st) {
   const ib = st.inbox;
+  if (st.brain?.state === "unconfigured") return h("div.empty", "The inbox lives on draftsmanbrain. Link the desk to it first.");
   if (!ib) return h("div.col", skLines(4));
   if (!ib.items.length) return h("div.empty", h("b", "Inbox is empty. "), "Penotron photos, Anamnis recordings and anything you share from the iPhone with the Send to Desk shortcut show up here.");
   return h("div.scroll.grow", ...ib.items.map((it) => h("button.li", { onclick: () => openItem(it) }, thumb(it),
@@ -78,7 +79,7 @@ const page = {
     put(els.tabs, [tab, n], () => [["overview", "Overview"], ["inbox", `Inbox${n ? ` (${n})` : ""}`]].map(([id, l]) =>
       h(`button.pad${tab === id ? "" : ".ghost"}`, { onclick: () => { tab = id; page.update(S.state); } }, l)));
     const scroll = els.body.querySelector(".scroll")?.scrollTop || 0;
-    if (put(els.body, [tab, tab === "inbox" ? st.inbox : st.brain], () => (tab === "inbox" ? inbox(st) : overview(st)))) {
+    if (put(els.body, [tab, st.brain?.state, tab === "inbox" ? st.inbox : st.brain], () => (tab === "inbox" ? inbox(st) : overview(st)))) {
       const sc = els.body.querySelector(".scroll"); if (sc) sc.scrollTop = scroll;
     }
     put(keys, [st.brain?.state, st.brain?.wol_targets, st.brain?.ollama], () => { paintKeys(st); return [...keys.childNodes]; });

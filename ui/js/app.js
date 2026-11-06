@@ -58,7 +58,7 @@ function paintStrip() {
   if (st.brain && st.brain.state !== "unconfigured") items.push(h("span.si", led({ online: "ok", degraded: "warn", unreachable: "fault" }[st.brain.state]), "Brain"));
   const mac = st.devices?.mac;
   if (mac && !mac.stale && mac.battery != null) items.push(h("span.si.opt", `Mac ${mac.battery}%${mac.charging ? " charging" : ""}`));
-  if (st.pi) items.push(h("span.si.opt", { class: st.pi.temp > 75 ? "warn-t" : "" }, `Pi ${Math.round(st.pi.temp)}°`));
+  if (st.pi && st.pi.temp > 0) items.push(h("span.si.opt", { class: st.pi.temp > 75 ? "warn-t" : "" }, `Pi ${Math.round(st.pi.temp)}°`));
   items.push(h("span.si.clock", `${pad2(now.getHours())}:${pad2(now.getMinutes())}`));
   stripEl.replaceChildren(...items);
 }
