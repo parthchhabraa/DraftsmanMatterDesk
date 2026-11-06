@@ -1,0 +1,71 @@
+# MatterDesk v6 settings. install.sh copies this to config/desk.toml (gitignored)
+# and fills in the keys. Every value can also be set by env:
+# MATTERDESK__BRAIN__TOKEN=... overrides [brain] token.
+
+owner = "Parth Chhabra"
+
+[server]
+host = "0.0.0.0"
+port = 8420
+# Phone/Mac browsers open http://matterdesk:8420/?key=<remote_key> once.
+remote_key = ""
+
+[display]
+backlight_power = "/sys/class/backlight/10-0045/bl_power"
+touch_device = "/dev/input/event4"
+idle_timeout_s = 600
+theme = "auto"        # auto, day, night
+night_from = 19
+day_from = 7
+
+[location]
+name = "Udaipur"
+latitude = 24.5854
+longitude = 73.6855
+timezone = "Asia/Kolkata"
+
+[brain]
+url = ""              # https://draftsmanbrain.<tailnet>.ts.net
+token = ""            # BRAIN_API_TOKEN from ~/brain-api/.env on draftsmanbrain
+wol_targets = ["desktop"]
+
+[murmur]
+url = ""              # https://draftsmanbrain.<tailnet>.ts.net:7341
+token = ""
+
+[spotify]
+# Create a NEW client secret in the Spotify developer dashboard: the old one was
+# committed to the public repo and must be treated as leaked.
+client_id = ""
+client_secret = ""
+redirect_uri = "http://127.0.0.1:8080/callback"
+
+[devices]
+device_key = ""       # Mac agent and iPhone shortcuts send this as X-Device-Key
+
+[study]
+subjects = ["Maths", "Physics", "P Chem", "O Chem", "I Chem", "English", "Other"]
+daily_goal_min = 360
+lockin_block = ["instagram", "youtube", "snapchat", "netflix", "reddit", "twitter"]
+lockin_playlist = ""
+lockin_lock_mac = false
+focus_name = "Study"
+focus_starts_sprint = true
+
+[network]
+ap_iface = "wlan1"
+wan_iface = "wlan0"
+wg_iface = "wg0"
+dpn_ssid = "Draftsman DPN"
+dpn_passphrase = ""
+dpn_subnet = "10.45.0"
+scan_subnet = ""
+
+[firebase]
+# Optional. Only the old v5 battery/bookmark/session data lives here.
+key_path = ""
+database_url = "https://draftsman-matterdesk-default-rtdb.firebaseio.com/"
+
+[ota]
+repo_url = "https://github.com/parthchhabraa/DraftsmanMatterDesk.git"
+branch = "v6"

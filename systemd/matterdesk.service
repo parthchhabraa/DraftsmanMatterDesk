@@ -1,0 +1,17 @@
+[Unit]
+Description=MatterDesk v6 (desk service)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=__USER__
+WorkingDirectory=__DIR__
+ExecStart=__DIR__/.venv/bin/python -m desk
+Restart=always
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+Environment=XDG_RUNTIME_DIR=/run/user/__UID__
+Environment=WAYLAND_DISPLAY=__WAYLAND__
+
+[Install]
+WantedBy=multi-user.target

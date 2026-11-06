@@ -1,39 +1,79 @@
 #!/bin/bash
-echo ">>> INITIALIZING MATTERDESK ARCHITECTURE <<<"
+# MatterDesk v6 installer for the Raspberry Pi. Run from the repo folder: ./install.sh
+# Safe to re-run. Moves your v5 data, Spotify login, Firebase key and brain link across.
+set -euo pipefail
+cd "$(dirname "$0")"
+DIR="$(pwd)"; ME="$(whoami)"; UID_="$(id -u)"
+say(){ printf '\n== %s\n' "$*"; }
 
-# 1. System Dependencies
-sudo apt update
-sudo apt install -y python3-tk nodejs npm libusb-1.0-0-dev cmake chromium-browser network-manager coreutils
-sudo pip3 install spotipy pillow requests firebase-admin evdev --break-system-packages
+say "system packages"
+sudo apt-get update -qq
+sudo apt-get install -y -qq python3-venv python3-evdev curl git network-manager hostapd dnsmasq wireguard-tools nmap >/dev/null
+sudo apt-get install -y -qq chromium-browser >/dev/null 2>&1 || sudo apt-get install -y -qq chromium >/dev/null
+sudo apt-get install -y -qq uxplay >/dev/null 2>&1 || echo "uxplay not in apt here; AirPlay stays off until it is installed"
+sudo systemctl disable --now hostapd dnsmasq >/dev/null 2>&1 || true   # the desk starts them when the hotspot is on
 
-# 2. USB Permissions (Carlinkit)
-echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="1314", ATTR{idProduct}=="152*", MODE="0666", GROUP="plugdev"' | sudo tee /etc/udev/rules.d/50-carplay.rules
-sudo udevadm control --reload-rules && sudo udevadm trigger
+say "python env"
+[ -d .venv ] || python3 -m venv --system-site-packages .venv
+.venv/bin/pip install -q -r requirements.txt
 
-# 3. Systemd Daemon Deployment
-cat <<EOF | sudo tee /etc/systemd/system/matterdesk.service
-[Unit]
-Description=Draftsman MatterDesk Core
-After=graphical.target
+say "settings"
+mkdir -p data
+if [ ! -f config/desk.toml ]; then
+  cp config/desk.example.toml config/desk.toml
+  key(){ python3 -c 'import secrets;print(secrets.token_urlsafe(18))'; }
+  sed -i "s|^remote_key = \"\"|remote_key = \"$(key)\"|; s|^device_key = \"\"|device_key = \"$(key)\"|" config/desk.toml
+  # carry v5 state across
+  if [ -f data/brain_config.json ]; then
+    BURL=$(python3 -c 'import json;print(json.load(open("data/brain_config.json")).get("brain_url",""))')
+    BTOK=$(python3 -c 'import json;print(json.load(open("data/brain_config.json")).get("brain_token",""))')
+    python3 - "$BURL" "$BTOK" <<'PY'
+import sys,re
+p="config/desk.toml"; s=open(p).read()
+s=re.sub(r'(\[brain\]\nurl = )""', r'\1"%s"' % sys.argv[1], s); s=re.sub(r'(\ntoken = )""(\s+# BRAIN_API_TOKEN)', r'\1"%s"\2' % sys.argv[2], s, count=1)
+open(p,"w").write(s)
+PY
+    echo "brain link copied from v5"
+    case "$BURL" in http://100.*) echo "!! v5 used $BURL. brain-api v2 is reached at its https ts.net address; update [brain] url.";; esac
+  fi
+  [ -f .cache ] && cp .cache data/spotify.cache && echo "Spotify login copied from v5 (needs your new client secret too)"
+  [ -f serviceAccountKey.json ] && sed -i "s|^key_path = \"\"|key_path = \"$DIR/serviceAccountKey.json\"|" config/desk.toml && echo "Firebase key found, old sessions will be imported"
+  chmod 600 config/desk.toml
+fi
 
-[Service]
-User=st6b
-Environment=DISPLAY=:0
-Environment=WAYLAND_DISPLAY=wayland-1
-Environment=XDG_RUNTIME_DIR=/run/user/1000
-WorkingDirectory=/home/st6b/matterdesk
-ExecStart=/usr/bin/python3 /home/st6b/matterdesk/matterdesk.py
-Restart=always
-RestartSec=5
+say "permissions the desk needs"
+cat <<SUDO | sudo tee /etc/sudoers.d/matterdesk >/dev/null
+$ME ALL=(root) NOPASSWD: /usr/bin/sh -c echo [01] > /sys/class/backlight/*, /usr/bin/systemctl reboot, /usr/bin/systemctl poweroff, /usr/bin/systemctl restart matterdesk.service, /usr/bin/systemctl restart dnsmasq, /usr/bin/systemctl restart hostapd, /usr/bin/systemctl stop hostapd dnsmasq, /usr/bin/systemctl unmask hostapd, /usr/bin/nmcli, /usr/sbin/iptables, /usr/sbin/sysctl -w net.ipv4.ip_forward=1, /usr/sbin/ip, /usr/bin/ip, /usr/bin/wg-quick, /usr/bin/install -m 600 * /etc/hostapd/hostapd.conf, /usr/bin/install -m 600 * /etc/dnsmasq.d/dpn.conf
+SUDO
+sudo chmod 440 /etc/sudoers.d/matterdesk && sudo visudo -cf /etc/sudoers.d/matterdesk >/dev/null
+sudo usermod -aG input "$ME"
 
-[Install]
-WantedBy=graphical.target
-EOF
-
+say "desk service"
+WL=$(ls /run/user/$UID_ 2>/dev/null | grep -m1 '^wayland-[0-9]$' || echo wayland-0)
+sed -e "s|__USER__|$ME|g" -e "s|__DIR__|$DIR|g" -e "s|__UID__|$UID_|g" -e "s|__WAYLAND__|$WL|g" systemd/matterdesk.service \
+  | sudo tee /etc/systemd/system/matterdesk.service >/dev/null
+systemctl --user disable --now matterdesk.service >/dev/null 2>&1 || true   # v5 ran as a user service on some setups
 sudo systemctl daemon-reload
-sudo systemctl enable matterdesk.service
+sudo systemctl enable --now matterdesk.service
+sudo systemctl restart matterdesk.service
 
-# 4. Plymouth Silent Boot (Optional)
-echo "disable_splash=1" | sudo tee -a /boot/firmware/config.txt > /dev/null
+say "kiosk on boot"
+LINE="$DIR/scripts/kiosk.sh &"
+mkdir -p ~/.config/labwc
+grep -qF "$DIR/scripts/kiosk.sh" ~/.config/labwc/autostart 2>/dev/null || echo "$LINE" >> ~/.config/labwc/autostart
+if [ -f ~/.config/wayfire.ini ]; then
+  sed -i '/^matterdesk *=/d' ~/.config/wayfire.ini
+  grep -q '^\[autostart\]' ~/.config/wayfire.ini || printf '\n[autostart]\n' >> ~/.config/wayfire.ini
+  sed -i "/^\[autostart\]/a matterdesk = $DIR/scripts/kiosk.sh" ~/.config/wayfire.ini
+fi
 
-echo ">>> DEPLOYMENT COMPLETE. PLEASE REBOOT. <<<"
+say "check"
+sleep 3
+curl -fsS http://127.0.0.1:8420/api/health && echo
+command -v tailscale >/dev/null || echo "!! Tailscale is not installed: curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up --hostname matterdesk"
+echo
+echo "Next:"
+echo "  1. Fill [brain], [murmur] and [spotify] in $DIR/config/desk.toml, then: sudo systemctl restart matterdesk"
+echo "  2. Spotify (new secret first): .venv/bin/python -m desk spotify-auth"
+echo "  3. Reboot to start the kiosk: sudo reboot"
+echo "  Phone/Mac: http://matterdesk:8420/?key=$(sed -n 's/^remote_key = "\(.*\)"/\1/p' config/desk.toml)"
