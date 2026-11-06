@@ -31,7 +31,10 @@ class StoreEngine(Engine):
         if self.path.exists():
             self.data.update(json.loads(self.path.read_text()))
         else:
-            self._import_v5()
+            try:
+                self._import_v5()
+            except Exception as e:  # noqa: BLE001 - odd v5 data must not stop the desk
+                self.hub.note(f"v5 import skipped: {e}", "warn")
             if self.demo and not any(self.data.values()):
                 self._seed_demo()
             self._save()

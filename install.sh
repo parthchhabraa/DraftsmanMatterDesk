@@ -68,8 +68,11 @@ if [ -f ~/.config/wayfire.ini ]; then
 fi
 
 say "check"
-sleep 3
-curl -fsS http://127.0.0.1:8420/api/health && echo
+for i in $(seq 1 40); do curl -fsS http://127.0.0.1:8420/api/health 2>/dev/null && { echo; break; }; sleep 1; done
+if ! curl -fs http://127.0.0.1:8420/api/health >/dev/null 2>&1; then
+  echo "!! desk service did not come up in 40 s. Last log lines:"
+  sudo journalctl -u matterdesk -n 25 --no-pager
+fi
 command -v tailscale >/dev/null || echo "!! Tailscale is not installed: curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up --hostname matterdesk"
 echo
 echo "Next:"
