@@ -114,7 +114,7 @@ class StudyEngine(Engine):
             return
         el = self.elapsed()
         remaining = max(0, a["target_s"] - el) if a["target_s"] else None
-        self.hub.publish("timer", {"subject": a["subject"], "elapsed": el, "target_s": a["target_s"],
+        self.hub.publish("timer", {"subject": a["subject"], "elapsed": el, "started": int(a["started"]), "target_s": a["target_s"],
                                    "remaining": remaining, "lockin": a["lockin"], "paused": bool(a["paused_at"])})
         if remaining == 0:
             self.end()
@@ -146,12 +146,14 @@ class StudyEngine(Engine):
             recent = c.execute("SELECT subject, started, seconds, lockin FROM sessions ORDER BY started DESC LIMIT 6").fetchall()
         days: dict[str, int] = {}
         subj_today: dict[str, int] = {}
+        blocks: list[list] = []
         week = 0
         for subj, started, secs in rows:
             d = dt.date.fromtimestamp(started)
             days[d.isoformat()] = days.get(d.isoformat(), 0) + secs
             if started >= today0:
                 subj_today[subj] = subj_today.get(subj, 0) + secs
+                blocks.append([int(started), int(secs), subj])
             if started >= today0 - 6 * 86400:
                 week += secs
         streak, d = 0, now.date()
@@ -168,7 +170,7 @@ class StudyEngine(Engine):
             "today_min": sum(subj_today.values()) // 60,
             "goal_min": self.cfg.study.daily_goal_min,
             "by_subject": sorted(([k, v // 60] for k, v in subj_today.items()), key=lambda x: -x[1]),
-            "week_min": week // 60, "streak": streak, "heat": heat,
+            "week_min": week // 60, "streak": streak, "heat": heat, "today_blocks": blocks,
             "recent": [{"subject": s, "at": dt.datetime.fromtimestamp(t).strftime("%d %b %H:%M"),
                         "min": sec // 60, "lockin": bool(li)} for s, t, sec, li in recent],
             "subjects": self.cfg.study.subjects,
@@ -197,6 +199,8 @@ class StudyEngine(Engine):
                     c.execute("INSERT INTO sessions(subject, started, seconds, lockin) VALUES(?,?,?,?)",
                               (rnd.choice(subs), now - day * 86400 + rnd.randint(0, 40000),
                                rnd.randint(20, 95) * 60, int(rnd.random() < 0.3)))
-            for subj, mins in [("Physics", 72), ("Maths", 55), ("O Chem", 41)]:
-                c.execute("INSERT INTO sessions(subject, started, seconds) VALUES(?,?,?)",
-                          (subj, now - rnd.randint(600, 20000), mins * 60))
+            day0 = time.mktime(time.localtime(now)[:3] + (0, 0, 0, 0, 0, -1))
+            for subj, h, mins in [("Physics", 6.5, 72), ("Maths", 9.0, 55), ("O Chem", 13.25, 41)]:
+                if day0 + h * 3600 + mins * 60 < now:
+                    c.execute("INSERT INTO sessions(subject, started, seconds) VALUES(?,?,?)",
+                              (subj, day0 + h * 3600, mins * 60))
