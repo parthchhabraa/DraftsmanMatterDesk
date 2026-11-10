@@ -91,6 +91,11 @@ export default {
     keys.replaceChildren(h("div.klabel", "Start with"),
       ...STARTS.map(([l, p]) => h("button.pad.ghost", { onclick: () => edit(p) }, l)),
       h("div.spacer"),
+      h("button.pad.ghost", { onclick: async () => {
+        const i = thread.map((m) => m.role).lastIndexOf("assistant");
+        if (busy || i < 1 || !thread[i].content) return toast("Ask something first", "warn");
+        try { await api("/api/notes", { id: null, body: `${thread[i - 1].content}\n\n${thread[i].content}` }); toast("Saved to Desk, Notes", "good"); } catch (e) { toast(e.message, "danger"); }
+      } }, "Save answer"),
       h("button.pad.ghost", { onclick: () => { if (!busy) { thread = []; store(); paintChat(); } } }, "New chat"));
     paintChat(); paintCompose();
   },

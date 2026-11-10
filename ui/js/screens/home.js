@@ -53,6 +53,11 @@ function dial(st) {
 
   // study track, today's sessions, the running sprint
   svg.append(s("circle", { cx: C, cy: C, r: 116, class: "track" }));
+  // the plan: study blocks as a lighter band the copper fills in, fixed blocks as a thin outer arc
+  for (const b of st.plan?.blocks || []) {
+    const f0 = epochFrac(b.start), f1 = Math.min(0.9995, f0 + (b.end - b.start) / 86400);
+    if (f1 > f0) svg.append(s("path", { d: arc(f0, f1, b.kind === "fixed" ? 124.5 : 116), class: `plan ${b.kind}` }));
+  }
   for (const [start, secs] of sd?.today_blocks || []) {
     const f0 = epochFrac(start), f1 = Math.min(f0 + secs / 86400, nf);
     if (f1 > f0) svg.append(s("path", { d: arc(f0, Math.max(f1, f0 + 0.004), 116), class: "block" }));
@@ -122,6 +127,18 @@ const stop = (fn) => (e) => { e.stopPropagation(); fn(e); };
 function panels(st) {
   const out = {};
   const cds = (st.desk?.countdowns || []).filter((c) => c.days >= 0);
+  const nowS = Date.now() / 1000, blocks = st.plan?.blocks || [];
+  const cur = blocks.find((b) => b.start <= nowS && nowS < b.end), nxt = blocks.find((b) => b.start > nowS);
+  const at = (ts) => hhmm(new Date(ts * 1000).toTimeString().slice(0, 5));
+  const then = nxt ? `then ${nxt.label} at ${at(nxt.start)}` : "nothing after";
+  let nowBody;
+  if (cur) nowBody = h("div.nowline",
+    h("div.grow", { style: { minWidth: 0 } }, h("div.ellip.big2", cur.label), h("div.sub.ellip", `until ${at(cur.end)}, ${then}`)),
+    cur.kind === "study" && !st.timer ? h("button.pad.small", { onclick: stop((e) => act(e.currentTarget, () => api(`/api/plan/${cur.id}/start`, {}), `${cur.label} started`)) }, "Start") : null);
+  else if (nxt) nowBody = [h("div.big2", "Free"), h("div.sub.ellip", `${nxt.label} at ${at(nxt.start)}`)];
+  else nowBody = h("div.sub", blocks.length ? "Plan is done for today" : "No plan yet. Build your day in Study, Plan");
+  out.now = row("Now", nowBody, () => go("study", { tab: "plan" }));
+
   out.next = row("Next", cds.length
     ? [h("div.big", h("span.num", cds[0].days === 0 ? "Today" : cds[0].days), cds[0].days ? h("small", " days") : null),
       h("div.sub.ellip", cds[0].label, cds[1] ? h("span.faint", `, then ${cds[1].label} in ${cds[1].days}`) : null)]
@@ -172,7 +189,7 @@ function musicProgress() {
 
 export default {
   id: "home", label: "Home", des: "U1", title: "Desk",
-  topics: ["weather", "study", "timer", "desk", "music", "brain", "devices", "inbox"],
+  topics: ["weather", "study", "timer", "desk", "music", "brain", "devices", "inbox", "plan"],
   mount(root) {
     els = { dial: h("div.dialwrap"), wx: h("div.wxrow"), actions: h("div.actions"), right: h("div.hright") };
     root.append(h("div.page.home2", h("div.hleft", els.dial, els.wx, els.actions), els.right));
@@ -183,7 +200,7 @@ export default {
   paintDial(st) {
     const t = st.timer, minute = Math.floor(Date.now() / 60000);
     // repaint each minute, and every second while a sprint is running
-    if (put(els.dial, [minute, t?.started, t?.paused, t ? Math.floor(t.elapsed / 30) : 0, st.study?.today_blocks, st.study?.goal_min, st.weather?.sunrise, use12()], () => dial(st))) {
+    if (put(els.dial, [minute, t?.started, t?.paused, t ? Math.floor(t.elapsed / 30) : 0, st.study?.today_blocks, st.study?.goal_min, st.weather?.sunrise, use12(), st.plan?.blocks], () => dial(st))) {
       if (firstDraw) setTimeout(() => { firstDraw = false; els.dial.querySelector(".dial")?.classList.remove("draw"); }, 1400);
     }
   },
@@ -209,7 +226,7 @@ export default {
     const m = st.music;
     put(els.right, [st.desk?.countdowns, st.desk?.tasks?.filter((x) => !x.done).length, st.desk?.tasks?.find((x) => !x.done)?.id,
       m?.track, m?.state, m?.art, st.brain?.state, st.brain?.services, st.brain?.containers?.map((c) => c.state), Math.round(st.brain?.host?.cpu ?? -1),
-      st.inbox?.items?.length, st.devices], () => [p.next, p.task, p.music, p.brain, p.devs]);
+      st.inbox?.items?.length, st.devices, st.plan?.blocks, Math.floor(Date.now() / 60000), !!st.timer], () => [p.now, p.next, p.task, p.music, p.brain, p.devs]);
     musicProgress();
   },
 };

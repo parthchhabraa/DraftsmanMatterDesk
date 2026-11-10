@@ -1,4 +1,4 @@
-import { $, S, api, clockText, emit, h, hm, led, toast, watch } from "./core.js";
+import { $, S, api, clockText, emit, h, hm, led, sound, toast, watch } from "./core.js";
 import { KIOSK } from "./osk.js";
 import home from "./screens/home.js";
 import study from "./screens/study.js";
@@ -24,6 +24,7 @@ export function go(id, opts) {
   pageEl.replaceChildren(); keysEl.replaceChildren();
   delete keysEl._sig; delete keysEl._tab;
   p.mount(pageEl, keysEl, opts || {});
+  pageEl.classList.remove("in"); void pageEl.offsetWidth; pageEl.classList.add("in");   // quick fade answers the tap
   p.update && p.update(S.state, new Set(["*", ...Object.keys(S.state)]));
   for (const b of railEl.children) {
     if (b.dataset.id === id) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
@@ -47,6 +48,7 @@ function railLeds() {
   set("devices", devs.some((d) => !d.stale && d.battery != null && d.battery <= 20 && !d.charging) ? "warn" : "");
   set("network", st.dpn?.on ? "ok" : st.adguard?.focus ? "warn" : "");
   set("claude", st.viewer?.open ? "ok" : "");
+  set("desk", st.ring ? "fault blink" : st.timers?.length ? "warn" : "");
   set("system", st.pi?.panic ? "fault blink" : (st.pi?.temp || 0) > 75 ? "warn" : "");
   for (const e of railEl.querySelectorAll(".led")) e.style.visibility = e.className.trim() === "led" ? "hidden" : "visible";
 }
@@ -56,6 +58,8 @@ function paintStrip() {
   const st = S.state, now = new Date();
   const items = [h("span.page-id", h("span.des", current?.des || ""), current?.title || current?.label || "")];
   items.push(h("span.grow"));
+  const tm = (st.timers || [])[0];
+  if (tm) items.push(h("span.si", led("warn"), `${tm.label.slice(0, 14)} ${hm(Math.max(0, tm.ends - Date.now() / 1000))}`));
   if (st.timer) items.push(h("span.si", led(st.timer.paused ? "warn" : "ok"), `${st.timer.subject} ${hm(st.timer.remaining ?? st.timer.elapsed)}`));
   if (st.brain && st.brain.state !== "unconfigured") items.push(h("span.si", led({ online: "ok", degraded: "warn", unreachable: "fault" }[st.brain.state]), "Brain"));
   const mac = st.devices?.mac;
@@ -91,6 +95,31 @@ function standby(asleep) {
 }
 $("#standby").addEventListener("pointerdown", () => api("/api/display/wake", {}).catch(() => {}));
 
+// ---------------------------------------------------------------- ring (alarm, timer, sprint finished)
+let ringEl = null, ringLoop = null, ringId = null;
+function ring(r) {
+  if (r && r.id === ringId) return;
+  clearInterval(ringLoop); ringEl?.remove(); ringEl = null; ringId = r?.id || null;
+  if (!r) return;
+  closeFocusView();
+  const sprint = r.kind === "sprint";
+  sound(sprint ? "done" : "alarm");
+  if (!sprint) ringLoop = setInterval(() => sound("alarm"), 2600);
+  const post = (path, body) => api(path, body || {}).catch((e) => toast(e.message, "danger"));
+  const rest = (m) => h("button.pad", { onclick: async () => { await post("/api/timers", { minutes: m, label: "Break over" }); post("/api/ring/dismiss"); } }, `${m} min break`);
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg"); svg.setAttribute("viewBox", "0 0 120 120"); svg.setAttribute("class", `ringmark${sprint ? " calm" : ""}`); svg.setAttribute("aria-hidden", "true");
+  for (const rad of [22, 38, 54]) { const c = document.createElementNS(NS, "circle"); c.setAttribute("cx", 60); c.setAttribute("cy", 60); c.setAttribute("r", rad); svg.append(c); }
+  ringEl = h("div.ringview", { role: "alertdialog", "aria-label": r.label },
+    svg,
+    h("div.rl", r.label),
+    h("div.rs", sprint ? `${r.minutes} min logged. Step away from the desk for a bit.` : `${r.kind === "alarm" ? "Alarm" : "Timer"}, ${clockText(new Date(r.since * 1000))}`),
+    h("div.row.rbtns", ...(sprint
+      ? [rest(10), rest(5), h("button.pad.ghost", { onclick: () => post("/api/ring/dismiss") }, "Done")]
+      : [h("button.pad.ghost", { onclick: () => post("/api/ring/snooze", { minutes: 5 }) }, "Snooze 5 min"), h("button.pad", { onclick: () => post("/api/ring/dismiss") }, "Dismiss")])));
+  document.body.append(ringEl);
+}
+
 // ---------------------------------------------------------------- OTA overlay
 function ota(o) {
   let el = $(".ota");
@@ -111,7 +140,7 @@ function connect() {
     if (m.snapshot) {
       S.state = m.snapshot; S.logs = m.logs || []; S.connected = true; retry = 0;
       clearTimeout(offlineTimer); $(".offline-banner")?.remove();
-      applyTheme(); standby(S.state.display?.asleep);
+      applyTheme(); standby(S.state.display?.asleep); ring(S.state.ring);
       if (!current) go(location.hash.slice(1) || "home"); else go(current.id);
       railLeds(); bootDone();
       return;
@@ -121,10 +150,12 @@ function connect() {
       if (m.t === "display") standby(m.d?.asleep);
       if (m.t === "ota") ota(m.d);
       if (m.t === "meta") applyTheme();
-      if (["brain", "timer", "devices", "pi", "music", "dpn", "adguard", "viewer"].includes(m.t)) { railLeds(); paintStrip(); }
+      if (m.t === "ring") ring(m.d);
+      if (["brain", "timer", "devices", "pi", "music", "dpn", "adguard", "viewer", "timers", "ring"].includes(m.t)) { railLeds(); paintStrip(); }
       if (current?.topics?.includes(m.t) || current?.topics?.includes("*")) current.update(S.state, new Set([m.t]));
       emit(new Set([m.t]));
     } else if (m.e === "toast") toast(m.d.text, m.d.level);
+    else if (m.e === "chime") sound("chime");
     else if (m.e === "log") { S.logs.unshift(m.d); S.logs.length = Math.min(S.logs.length, 300); emit(new Set(["logs"])); }
   };
   ws.onclose = (ev) => {
@@ -205,4 +236,5 @@ document.body.append(h("div.bootmark", h("div.wordmark", "MATTERDESK"), h("div.c
 
 buildRail();
 setInterval(() => { paintStrip(); applyTheme(); }, 15000);
+setInterval(() => { if (S.state.timers?.length) paintStrip(); }, 1000);
 connect();

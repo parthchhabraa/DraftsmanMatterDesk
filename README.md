@@ -13,15 +13,15 @@ a parthchhabra production
 
 | Page | What is on it |
 |---|---|
-| Home | Clock, weather, today's tasks, study goal, next exam countdown, brain, music, devices, inbox |
-| Study | Sprint timer by subject, 25/50/90/open, Lock-in, 20-week heatmap, streak, focus view that drifts so nothing burns in |
+| Home | The day dial: daylight, your plan, study done, goal ring, now hand. Now row with one-tap start for the planned block, next countdown, next task, music, brain LEDs, batteries |
+| Study | **Sprint** ring timer with Lock-in. **Plan** your routine (fixed blocks like school, study blocks). **Insights**: 14-day chart, 30-day subject split, heatmap. **Mock scores** plotted against your target |
 | Brain | draftsmanbrain CPU/RAM/disk, every service and container with Restart, Wake desktop, Inbox |
 | Ask | Chat with the Ollama model on draftsmanbrain, streamed. Mic goes through Murmur |
 | Claude | A shelf of your Claude artifacts. Tap one and it opens full screen on the desk; Back to desk (or a triple-tap) returns. Share an artifact link from the iPhone with Send to Desk to add it |
 | Network | Tailnet devices, exit node on/off and Proton exit location, AdGuard stats, home Wi-Fi map with block, the DPN hotspot with QR |
 | Devices | Mac battery/CPU/front app, Lock, Display off, Send text to clipboard, Notify, Keep awake. iPhone and iPad battery and Focus |
 | Music | Spotify now playing, transport, volume, playlists, output device. AirPlay receiver |
-| Desk | Tasks, notes, flashcards with spaced repetition, countdowns |
+| Desk | Tasks, notes, flashcards with spaced repetition, countdowns, **alarms and quick timers** (full-screen ring, snooze, Mac notification) |
 | System | Pi health, Wi-Fi, checks, log, colours, update, power |
 
 **Lock-in** is the headline feature: start a sprint with Lock-in on (or turn on the

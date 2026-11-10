@@ -104,6 +104,32 @@ export function glyph(name) {
   const p = document.createElementNS(ns, "path"); p.setAttribute("d", GLYPHS[name]); svg.append(p); return svg;
 }
 
+// ---------------------------------------------------------------- sound
+// Short synthesised tones, no audio files. Off switch lives in System.
+let actx;
+export const soundOn = () => { try { return localStorage.getItem("md-sound") !== "off"; } catch { return true; } };
+const TONES = {
+  chime: [[660, 0, 0.18], [880, 0.16, 0.32]],
+  done: [[523, 0, 0.16], [659, 0.15, 0.16], [784, 0.3, 0.45]],
+  alarm: [[880, 0, 0.13], [880, 0.2, 0.13], [880, 0.4, 0.13], [1175, 0.6, 0.32]],
+};
+export function sound(kind = "chime") {
+  if (!soundOn()) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === "suspended") actx.resume();
+    const t0 = actx.currentTime + 0.02;
+    for (const [freq, at, len] of TONES[kind] || TONES.chime) {
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = "triangle"; o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t0 + at);
+      g.gain.exponentialRampToValueAtTime(0.28, t0 + at + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + at + len);
+      o.connect(g).connect(actx.destination); o.start(t0 + at); o.stop(t0 + at + len + 0.02);
+    }
+  } catch { /* no audio device: the screen still shows it */ }
+}
+
 // ---------------------------------------------------------------- overlays
 const layer = () => document.getElementById("layer");
 
@@ -135,9 +161,10 @@ export function confirmBox(question, yesLabel, { danger = false } = {}) {
 
 export function pick(title, options, current) {
   return new Promise((res) => {
+    // Resolve BEFORE closing: closing fires onClose, which would settle the promise with null first.
     const close = sheet(title, h("div.picks", options.map((o) => {
       const [value, label] = Array.isArray(o) ? o : [o, o];
-      return h(`button.pad${value === current ? "" : ".ghost"}`, { onclick: () => { close(); res(value); } }, label);
+      return h(`button.pad${value === current ? "" : ".ghost"}`, { onclick: () => { res(value); close(); } }, label);
     })), { onClose: () => res(null) });
   });
 }

@@ -246,7 +246,7 @@ input, textarea { font: inherit; color: var(--silk); }
 .heat i.l1 { background: #3a3a1f; box-shadow: none; } .heat i.l2 { background: #6b4a1f; box-shadow: none; }
 .heat i.l3 { background: #a7743a; box-shadow: none; } .heat i.l4 { background: var(--copper); box-shadow: none; }
 .heat i.today { box-shadow: inset 0 0 0 1px var(--silk); }
-.subjbars .r { display: grid; grid-template-columns: 76px 1fr 52px; gap: 10px; align-items: center; padding: 5px 0; font-size: 14px; }
+.subjbars .r { display: grid; grid-template-columns: 76px 1fr 68px; gap: 10px; align-items: center; padding: 5px 0; font-size: 14px; }
 
 /* focus view: just the clock, drifting slowly so nothing burns in */
 .focusview { position: fixed; inset: 0; background: var(--mask-deep); z-index: 40; display: flex; align-items: center; justify-content: center; }
@@ -310,6 +310,73 @@ input.field, textarea.field { border: 0; outline: 0; user-select: text; -webkit-
 .cd { display: flex; align-items: baseline; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--trace); }
 .cd .days { font-family: "B612", sans-serif; font-size: 44px; font-weight: 700; width: 120px; text-align: right; line-height: 1; }
 .cd .days.past { color: var(--silk-faint); font-size: 28px; }
+
+/* ------------------------------------------------------------------ v6.1: plan, ring timer, charts, alarms */
+#page.in > .page { animation: pagein 140ms ease-out; }
+@keyframes pagein { from { opacity: 0; } }
+
+.dial .plan { fill: none; }
+.dial .plan.study { stroke: var(--trace-hi); stroke-width: 12; }
+.dial .plan.fixed { stroke: var(--silk-faint); stroke-width: 2; }
+.nowline { display: flex; align-items: center; gap: 10px; }
+.hbody .big2 { font-size: 19px; font-weight: 700; line-height: 1.15; }
+
+.sringwrap { flex: none; width: 214px; display: flex; align-items: flex-start; justify-content: center; }
+.sring { width: 214px; height: 214px; display: block; }
+.sring .track { fill: none; stroke: var(--mask-deep); stroke-width: 12; }
+.sring .prog { fill: none; stroke: var(--copper); stroke-width: 12; transition: stroke-dasharray 900ms linear; }
+.sring .prog.paused { stroke: var(--led-warn); }
+.sring .tick { stroke: var(--silk-faint); stroke-width: 1; }
+.sring .t { fill: var(--silk); font: 700 44px "B612", sans-serif; letter-spacing: -1px; }
+.sring .t.long { font-size: 34px; }
+.sring .t.idle { fill: var(--silk-faint); }
+.sring .m { fill: var(--silk-dim); font: 13px "B612", sans-serif; }
+.pad.planned { white-space: normal; text-align: left; justify-content: flex-start; min-height: 48px; line-height: 1.25; padding: 6px 12px; box-shadow: inset 0 0 0 1px var(--copper); }
+
+.subjbars .num { white-space: nowrap; text-align: right; }
+.planrow .ptime { width: 176px; flex: none; font-size: 14px; }
+.planrow.off { color: var(--silk-faint); }
+.planrow.off .dim { color: var(--silk-faint); }
+
+/* charts: one series, the desk's copper; values read out on tap */
+.chart { width: 100%; height: auto; display: block; touch-action: manipulation; }
+.chart .axis { stroke: var(--trace-hi); stroke-width: 1; }
+.chart .goal-line { stroke: var(--silk-faint); stroke-width: 1; stroke-dasharray: 4 4; }
+.chart .lbl { fill: var(--silk-dim); font: 11px "B612", sans-serif; }
+.chart .hit { fill: transparent; }
+.chart .col .b { fill: var(--copper); }
+.chart .col.met .b { fill: var(--led-ok); }
+.chart .col.sel .b { stroke: var(--silk); stroke-width: 2; }
+.chart .col.sel .lbl { fill: var(--silk); }
+.chart .ln { fill: none; stroke: var(--copper); stroke-width: 2; stroke-linejoin: round; }
+.chart .pt .dot { fill: var(--copper); stroke: var(--mask); stroke-width: 2; }
+.chart .pt.met .dot { fill: var(--led-ok); }
+.chart .pt.sel .dot { stroke: var(--silk); }
+.chart .val { fill: var(--silk); font: 700 13px "B612", sans-serif; }
+
+.alarmrow .atime { font-size: 22px; font-weight: 700; }
+.alarmrow.off .atime { color: var(--silk-faint); }
+
+/* time and day pickers */
+.tp { display: flex; flex-direction: column; gap: 12px; }
+.tp-show { font-size: 54px; font-weight: 700; text-align: center; line-height: 1.1; }
+.tp-row { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; }
+.tp-col { display: flex; flex-direction: column; gap: 5px; align-items: center; }
+.tp-step { min-width: 68px; min-height: 54px; font-size: 20px; }
+.tp-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.tp-days .pad { padding: 0; min-height: 52px; }
+
+/* the ring: alarm, timer, sprint finished */
+.ringview { position: fixed; inset: 0; z-index: 85; background: var(--mask-deep); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 20px; text-align: center; }
+.ringmark { width: 120px; height: 120px; }
+.ringmark circle { fill: none; stroke: var(--copper); stroke-width: 3; transform-origin: 60px 60px; animation: ringpulse 1.3s ease-out infinite; }
+.ringmark circle:nth-child(2) { animation-delay: .18s; } .ringmark circle:nth-child(3) { animation-delay: .36s; }
+.ringmark.calm circle { stroke: var(--led-ok); animation: none; }
+@keyframes ringpulse { 0% { opacity: .15; } 30% { opacity: 1; } 100% { opacity: .15; } }
+.ringview .rl { font-size: 34px; font-weight: 700; line-height: 1.15; max-width: 22ch; }
+.ringview .rs { color: var(--silk-dim); max-width: 44ch; }
+.ringview .rbtns { margin-top: 14px; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.ringview .rbtns .pad { min-width: 150px; min-height: 60px; font-size: 17px; }
 
 /* ------------------------------------------------------------------ overlays */
 #layer:empty { display: none; }

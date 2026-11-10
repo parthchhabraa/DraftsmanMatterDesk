@@ -1,4 +1,4 @@
-import { S, act, api, confirmBox, h, led, level, pick, skLines, spark, toast, uptime, watch, put, hhmm, use12 } from "../core.js";
+import { S, act, api, confirmBox, h, led, level, pick, skLines, spark, toast, uptime, watch, put, hhmm, use12, sound, soundOn } from "../core.js";
 import { textInput } from "../osk.js";
 
 let tab = "pi", els, keys, wifi = null, unwatch, results = {};
@@ -79,6 +79,7 @@ function paintKeys() {
     } }, `Colours: ${theme}`),
     h("button.pad.ghost", { onclick: async () => { if (await confirmBox("Download and install the latest MatterDesk from GitHub?", "Update")) api("/api/ota", {}); } }, "Update"),
     h("button.pad.ghost", { onclick: () => { localStorage.setItem("md-clock", use12() ? "24" : "12"); paintKeys(); window.desk.go("system"); } }, `Clock: ${use12() ? "12h" : "24h"}`),
+    h("button.pad.ghost", { onclick: () => { localStorage.setItem("md-sound", soundOn() ? "off" : "on"); sound("chime"); paintKeys(); } }, `Sound: ${soundOn() ? "on" : "off"}`),
     h("div.spacer"),
     h("button.pad.danger", { onclick: async () => {
       const a = await pick("Power", [["restart-desk", "Restart the desk app"], ["reboot", "Restart the Pi"], ["poweroff", "Shut down the Pi"]]);
