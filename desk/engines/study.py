@@ -118,7 +118,7 @@ class StudyEngine(Engine):
                                    "remaining": remaining, "lockin": a["lockin"], "paused": bool(a["paused_at"])})
         if remaining == 0:
             self.end()
-            self.hub.toast(f"{a['subject']} sprint done. {a['target_s'] // 60} min logged.", "good")
+            self.desk.clock.ring("sprint", f"{a['subject']} sprint done", minutes=a["target_s"] // 60, subject=a["subject"])
 
     def _lockin(self, on: bool):
         st = self.cfg.study
@@ -162,6 +162,16 @@ class StudyEngine(Engine):
         while days.get(d.isoformat(), 0) >= 1800:
             streak += 1
             d -= dt.timedelta(days=1)
+        # last 14 days for the bar chart, 30-day split by subject
+        days14 = []
+        for i in range(13, -1, -1):
+            d14 = now.date() - dt.timedelta(days=i)
+            days14.append({"date": d14.isoformat(), "wd": d14.strftime("%a"), "min": days.get(d14.isoformat(), 0) // 60})
+        split: dict[str, int] = {}
+        for subj, started, secs in rows:
+            if started >= today0 - 29 * 86400:
+                split[subj] = split.get(subj, 0) + secs
+        last7 = [x["min"] for x in days14[-8:-1]]   # the 7 full days before today
         heat = []
         for i in range(139, -1, -1):
             day = (now.date() - dt.timedelta(days=i)).isoformat()
@@ -174,6 +184,9 @@ class StudyEngine(Engine):
             "recent": [{"subject": s, "at": dt.datetime.fromtimestamp(t).strftime("%d %b %H:%M"),
                         "min": sec // 60, "lockin": bool(li)} for s, t, sec, li in recent],
             "subjects": self.cfg.study.subjects,
+            "days14": days14, "split30": sorted(([k, v // 60] for k, v in split.items()), key=lambda x: -x[1]),
+            "avg7": round(sum(last7) / 7) if last7 else 0, "best14": max((x["min"] for x in days14), default=0),
+            "score_target": self.cfg.study.score_target, "score_out_of": self.cfg.study.score_out_of,
         })
 
     def _import_firebase(self):

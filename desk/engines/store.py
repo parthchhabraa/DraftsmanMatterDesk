@@ -31,10 +31,15 @@ class StoreEngine(Engine):
         super().__init__(desk)
         self.path = self.cfg.data_dir / "desk.json"
         self._lock = threading.Lock()
-        self.data = {"notes": [], "tasks": [], "cards": [], "countdowns": [], "artifacts": []}
+        keys = ("notes", "tasks", "cards", "countdowns", "artifacts", "plan", "alarms", "scores")
+        self.data = {k: [] for k in keys}
         if self.path.exists():
             self.data.update(json.loads(self.path.read_text()))
-            self.data.setdefault("artifacts", [])
+            for k in keys:
+                self.data.setdefault(k, [])
+            if self.demo and not self.data["plan"]:
+                self._seed_demo_plan()
+                self._save()
         else:
             try:
                 self._import_v5()
@@ -62,6 +67,9 @@ class StoreEngine(Engine):
             "notes": sorted(d["notes"], key=lambda n: -n.get("updated", 0)),
             "tasks": d["tasks"], "cards": d["cards"], "countdowns": cds,
             "artifacts": sorted(d["artifacts"], key=lambda a: -max(a.get("opened") or 0, a.get("added") or 0)),
+            "plan": sorted(d["plan"], key=lambda b: b.get("start", "")),
+            "alarms": sorted(d["alarms"], key=lambda a: a.get("time", "")),
+            "scores": sorted(d["scores"], key=lambda s: s.get("date", "")),
         })
 
     def _save(self):
@@ -136,6 +144,55 @@ class StoreEngine(Engine):
             d["countdowns"].append({"id": _id(), "label": label, "date": date})
         self.mutate(f)
 
+    # ---------- day plan ----------
+    def save_block(self, block: dict) -> str:
+        h, m = (int(x) for x in str(block.get("start", "")).split(":"))
+        if not (0 <= h < 24 and 0 <= m < 60):
+            raise ValueError("start must be HH:MM")
+        minutes = int(block.get("minutes", 0))
+        if not (5 <= minutes <= 16 * 60):
+            raise ValueError("length must be between 5 minutes and 16 hours")
+        kind = "fixed" if block.get("kind") == "fixed" else "study"
+        clean = {"id": block.get("id") or _id(), "kind": kind, "start": f"{h:02d}:{m:02d}", "minutes": minutes,
+                 "subject": (block.get("subject") or None) if kind == "study" else None,
+                 "label": str(block.get("label") or block.get("subject") or "Block").strip()[:40],
+                 "days": sorted({int(x) for x in block.get("days") or [] if 0 <= int(x) <= 6})}
+
+        def f(d):
+            d["plan"] = [b for b in d["plan"] if b["id"] != clean["id"]] + [clean]
+        self.mutate(f)
+        return clean["id"]
+
+    # ---------- alarms ----------
+    def save_alarm(self, alarm: dict) -> str:
+        h, m = (int(x) for x in str(alarm.get("time", "")).split(":"))
+        if not (0 <= h < 24 and 0 <= m < 60):
+            raise ValueError("time must be HH:MM")
+        clean = {"id": alarm.get("id") or _id(), "time": f"{h:02d}:{m:02d}",
+                 "label": str(alarm.get("label") or "Alarm").strip()[:40], "enabled": bool(alarm.get("enabled", True)),
+                 "days": sorted({int(x) for x in alarm.get("days") or [] if 0 <= int(x) <= 6})}
+
+        def f(d):
+            d["alarms"] = [a for a in d["alarms"] if a["id"] != clean["id"]] + [clean]
+        self.mutate(f)
+        return clean["id"]
+
+    def set_alarm_enabled(self, alarm_id: str, enabled: bool | None = None):
+        def f(d):
+            for a in d["alarms"]:
+                if a["id"] == alarm_id:
+                    a["enabled"] = (not a.get("enabled", True)) if enabled is None else enabled
+        self.mutate(f)
+
+    # ---------- mock test scores ----------
+    def add_score(self, name: str, score: float, out_of: float, date: str | None = None):
+        date = date or dt.date.today().isoformat()
+        dt.date.fromisoformat(date)
+        if out_of <= 0 or not (-out_of <= score <= out_of):
+            raise ValueError("score must be within the paper's marks")
+        self.mutate(lambda d: d["scores"].append({"id": _id(), "name": name.strip()[:40] or "Mock", "date": date,
+                                                  "score": round(float(score), 1), "out_of": round(float(out_of), 1)}))
+
     # ---------- Claude artifacts shelf ----------
     def add_artifact(self, url: str, title: str = "", source: str = "desk") -> bool:
         url = url.strip().split("?")[0].split("#")[0]
@@ -203,7 +260,26 @@ class StoreEngine(Engine):
         if any(self.data.values()):
             self.hub.note("Imported notes, tasks, flashcards and countdown from v5")
 
+    def _seed_demo_plan(self):
+        today = dt.date.today()
+        now = dt.datetime.now()
+        hh = lambda delta: (now + dt.timedelta(minutes=delta)).strftime("%H:%M")
+        self.data["plan"] = [
+            {"id": _id(), "kind": "fixed", "label": "School", "subject": None, "start": "07:30", "minutes": 390, "days": [0, 1, 2, 3, 4, 5]},
+            {"id": _id(), "kind": "study", "label": "Physics", "subject": "Physics", "start": hh(-20), "minutes": 70, "days": []},
+            {"id": _id(), "kind": "study", "label": "Maths", "subject": "Maths", "start": hh(75), "minutes": 90, "days": []},
+            {"id": _id(), "kind": "study", "label": "O Chem", "subject": "O Chem", "start": "21:30", "minutes": 60, "days": [0, 2, 4]},
+        ]
+        self.data["alarms"] = [
+            {"id": _id(), "time": "05:45", "label": "Wake up", "enabled": True, "days": [0, 1, 2, 3, 4, 5]},
+            {"id": _id(), "time": "22:45", "label": "Wind down", "enabled": False, "days": []},
+        ]
+        for i, (name, sc) in enumerate([("AITS 1", 96), ("AITS 2", 104), ("Uniity FT 3", 118), ("AITS 3", 111), ("Uniity FT 4", 127), ("AITS 4", 134)]):
+            self.data["scores"].append({"id": _id(), "name": name, "date": (today - dt.timedelta(days=70 - i * 13)).isoformat(),
+                                        "score": sc, "out_of": 300})
+
     def _seed_demo(self):
+        self._seed_demo_plan()
         today = dt.date.today()
         self.data["countdowns"] = [
             {"id": _id(), "label": "JEE Main S1", "date": (today + dt.timedelta(days=74)).isoformat()},

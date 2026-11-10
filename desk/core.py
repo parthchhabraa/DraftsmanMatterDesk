@@ -3,6 +3,7 @@ from __future__ import annotations
 from .config import Config
 from .engines.airplay import AirplayEngine
 from .engines.brain import BrainEngine
+from .engines.clockwork import ClockEngine
 from .engines.devices import DevicesEngine
 from .engines.firebase_link import FirebaseLink
 from .engines.network import NetworkEngine
@@ -14,7 +15,7 @@ from .engines.viewer import ViewerEngine
 from .engines.weather import WeatherEngine
 from .hub import Hub
 
-VERSION = "6.0.0"
+VERSION = "6.1.0"
 
 
 class Desk:
@@ -34,8 +35,9 @@ class Desk:
         self.study = StudyEngine(self)
         self.network = NetworkEngine(self)
         self.viewer = ViewerEngine(self)
+        self.clock = ClockEngine(self)
         self.engines = [self.system, self.airplay, self.weather, self.spotify, self.store,
-                        self.brain, self.devices, self.study, self.network, self.viewer]
+                        self.brain, self.devices, self.study, self.network, self.viewer, self.clock]
 
     def call_ui(self, fn, *args):
         """Engines are thread-safe; kept as one place to hop threads if that changes."""

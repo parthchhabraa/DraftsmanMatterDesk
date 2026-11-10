@@ -102,3 +102,65 @@ def test_viewer_only_opens_https(app):
     with TestClient(app) as c:
         assert c.post("/api/viewer/open", json={"url": "http://evil.example"}).status_code == 400
         assert c.post("/api/viewer/open", json={"url": "https://claude.ai/artifact/abc"}).status_code == 200
+
+
+def test_plan_block_and_one_tap_start(app):
+    import datetime as dt
+    with TestClient(app) as c:
+        d = app.state.desk
+        start = (dt.datetime.now() - dt.timedelta(minutes=10)).strftime("%H:%M")
+        if start > "23:00":
+            pytest.skip("too close to midnight for a 40 minute block")
+        bid = c.post("/api/plan", json={"block": {"kind": "study", "subject": "Maths", "start": start, "minutes": 40, "days": []}}).json()["id"]
+        blocks = d.clock.today_blocks()
+        mine = next(b for b in blocks if b["id"] == bid)
+        assert mine["end"] - mine["start"] == 40 * 60
+        left = c.post(f"/api/plan/{bid}/start", json={"lockin": False}).json()["minutes"]
+        assert 28 <= left <= 30 and d.study.active["subject"] == "Maths"
+        d.study.end()
+        assert c.post("/api/plan", json={"block": {"start": "25:00", "minutes": 30}}).status_code == 400
+        # a block for another weekday is not in today's list
+        other = (dt.date.today().weekday() + 1) % 7
+        oid = c.post("/api/plan", json={"block": {"kind": "fixed", "label": "X", "start": "10:00", "minutes": 30, "days": [other]}}).json()["id"]
+        assert all(b["id"] != oid for b in d.clock.today_blocks())
+
+
+def test_timer_rings_snoozes_and_alarm_fires(app):
+    import datetime as dt
+    with TestClient(app) as c:
+        d = app.state.desk
+        t = c.post("/api/timers", json={"minutes": 1, "label": "Tea"}).json()
+        d.clock.timers[0]["ends"] = 0
+        d.clock.tick()
+        assert d.hub.get("ring")["label"] == "Tea" and d.hub.get("timers") == []
+        assert "ring" in d.system.wake_lock
+        c.post("/api/ring/snooze", json={"minutes": 5})
+        assert d.hub.get("ring") is None and d.hub.get("timers")[0]["label"] == "Tea"
+        c.delete(f"/api/timers/{d.clock.timers[0]['id']}")
+        assert d.hub.get("timers") == [] and t["id"]
+        # one-time alarm for this minute fires once and switches itself off
+        now = dt.datetime.now().strftime("%H:%M")
+        aid = c.post("/api/alarms", json={"alarm": {"time": now, "label": "Up", "days": []}}).json()["id"]
+        d.clock.tick(); d.clock.tick()
+        assert d.hub.get("ring")["kind"] == "alarm"
+        c.post("/api/ring/dismiss")
+        d.clock.tick()
+        assert d.hub.get("ring") is None
+        assert next(a for a in d.hub.get("desk")["alarms"] if a["id"] == aid)["enabled"] is False
+
+
+def test_sprint_end_rings_and_scores(app):
+    with TestClient(app) as c:
+        d = app.state.desk
+        d.study.begin("Physics", 1, False)
+        d.study.active["started"] -= 61
+        d.study._tick()
+        r = d.hub.get("ring")
+        assert r["kind"] == "sprint" and r["subject"] == "Physics"
+        c.post("/api/ring/dismiss")
+        n = len(d.hub.get("desk")["scores"])
+        assert c.post("/api/scores", json={"name": "AITS 5", "score": 141}).status_code == 200
+        assert len(d.hub.get("desk")["scores"]) == n + 1
+        assert c.post("/api/scores", json={"name": "bad", "score": 900}).status_code == 400
+        st = d.hub.get("study")
+        assert len(st["days14"]) == 14 and st["score_target"] == 150

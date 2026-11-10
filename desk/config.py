@@ -88,6 +88,9 @@ class Study:
     # iPhone Focus with this name (sent by the Shortcuts automation) starts/ends a lock-in sprint.
     focus_name: str = "Study"
     focus_starts_sprint: bool = True
+    # Mock test tracker: the line you are chasing, and the paper's full marks.
+    score_target: int = 150
+    score_out_of: int = 300
 
 
 @dataclass

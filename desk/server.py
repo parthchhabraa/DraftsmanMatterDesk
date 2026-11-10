@@ -230,10 +230,50 @@ def create_app(cfg: Config, desk: Desk | None = None) -> FastAPI:
         if kind == "inbox":
             run(desk.brain.inbox_delete, item_id)
             return {"ok": True}
-        table = {"notes": "notes", "tasks": "tasks", "cards": "cards", "countdowns": "countdowns", "artifacts": "artifacts"}.get(kind)
+        if kind == "timers":
+            desk.clock.cancel_timer(item_id)
+            return {"ok": True}
+        table = {k: k for k in ("notes", "tasks", "cards", "countdowns", "artifacts", "plan", "alarms", "scores")}.get(kind)
         if not table:
             raise HTTPException(404)
         s.delete(table, item_id)
+        return {"ok": True}
+
+    # ---------------- plan, alarms, timers, ring, scores ----------------
+    @app.post("/api/plan", dependencies=U)
+    def plan_save(block: dict = Body(..., embed=True)):
+        return {"id": run(s.save_block, block)}
+
+    @app.post("/api/plan/{block_id}/start", dependencies=U)
+    def plan_start(block_id: str, lockin: bool = Body(False, embed=True)):
+        return {"minutes": run(desk.clock.start_block, block_id, lockin)}
+
+    @app.post("/api/alarms", dependencies=U)
+    def alarm_save(alarm: dict = Body(..., embed=True)):
+        return {"id": run(s.save_alarm, alarm)}
+
+    @app.post("/api/alarms/{alarm_id}/toggle", dependencies=U)
+    def alarm_toggle(alarm_id: str):
+        s.set_alarm_enabled(alarm_id)
+        return {"ok": True}
+
+    @app.post("/api/timers", dependencies=U)
+    def timer_add(minutes: float = Body(...), label: str = Body("")):
+        return run(desk.clock.add_timer, minutes, label)
+
+    @app.post("/api/ring/dismiss", dependencies=U)
+    def ring_dismiss():
+        desk.clock.dismiss()
+        return {"ok": True}
+
+    @app.post("/api/ring/snooze", dependencies=U)
+    def ring_snooze(minutes: int = Body(5, embed=True)):
+        desk.clock.snooze(max(1, min(60, minutes)))
+        return {"ok": True}
+
+    @app.post("/api/scores", dependencies=U)
+    def score_add(name: str = Body(...), score: float = Body(...), out_of: Optional[float] = Body(None), date: Optional[str] = Body(None)):
+        run(s.add_score, name, score, out_of or cfg.study.score_out_of, date)
         return {"ok": True}
 
     @app.post("/api/artifacts", dependencies=D)

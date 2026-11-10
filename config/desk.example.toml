@@ -51,6 +51,8 @@ lockin_playlist = ""
 lockin_lock_mac = false
 focus_name = "Study"
 focus_starts_sprint = true
+score_target = 150      # mock test tracker: the line you are chasing
+score_out_of = 300
 
 [network]
 ap_iface = "wlan1"
